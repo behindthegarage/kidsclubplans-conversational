@@ -1146,9 +1146,6 @@ def generate_from_supplies_tool(
                 }
             ]
         }
-                }
-            ]
-        }
     }
     
     matched_activities = []
