@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Schedule, listSchedules, deleteSchedule, getSchedule } from '@/lib/api';
+import { Schedule, listSchedules, deleteSchedule, getSchedule, saveSchedule } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -23,6 +23,7 @@ import {
   X,
   Printer,
   Package,
+  Copy,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -132,6 +133,36 @@ export function ScheduleManager({ onSelectSchedule, trigger }: ScheduleManagerPr
     setTimeout(() => printWindow.print(), 100);
   };
 
+  const [isDuplicating, setIsDuplicating] = useState(false);
+
+  const handleDuplicate = async () => {
+    if (!selectedSchedule) return;
+    setIsDuplicating(true);
+    setError(null);
+    try {
+      // Create a new schedule with the same activities but new date
+      const newDate = new Date();
+      newDate.setDate(newDate.getDate() + 1); // Tomorrow
+      const dateStr = newDate.toISOString().split('T')[0];
+
+      await saveSchedule({
+        date: dateStr,
+        title: `${selectedSchedule.date} Schedule (Copy)`,
+        age_group: selectedSchedule.age_group,
+        duration_hours: selectedSchedule.duration_hours,
+        activities: selectedSchedule.activities || [],
+      });
+
+      // Refresh the list
+      await loadSchedules();
+      setSelectedSchedule(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to duplicate schedule');
+    } finally {
+      setIsDuplicating(false);
+    }
+  };
+
   const formatDate = (dateStr: string) => {
     if (!dateStr || dateStr === 'schedule_generated') return 'Generated Schedule';
     try {
@@ -193,6 +224,19 @@ export function ScheduleManager({ onSelectSchedule, trigger }: ScheduleManagerPr
                 >
                   <Printer className="w-4 h-4 mr-1" />
                   Print
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDuplicate}
+                  disabled={isDuplicating}
+                >
+                  {isDuplicating ? (
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  ) : (
+                    <Copy className="w-4 h-4 mr-1" />
+                  )}
+                  Duplicate
                 </Button>
                 {onSelectSchedule && (
                   <Button
