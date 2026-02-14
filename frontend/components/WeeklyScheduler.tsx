@@ -177,21 +177,23 @@ export function WeeklyScheduler({ initialWeek = 1, onSave }: WeeklySchedulerProp
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="border-b p-4 space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+      <div className="border-b p-2 lg:p-4 space-y-2 lg:space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
+                className="h-8 w-8 p-0"
                 onClick={() => setCurrentWeek(prev => Math.max(1, prev - 1))}
               >
                 <ChevronLeft className="w-4 h-4" />
               </Button>
-              <span className="font-semibold">Week {currentWeek}</span>
+              <span className="font-semibold text-sm lg:text-base w-16 text-center">Week {currentWeek}</span>
               <Button
                 variant="outline"
                 size="sm"
+                className="h-8 w-8 p-0"
                 onClick={() => setCurrentWeek(prev => prev + 1)}
               >
                 <ChevronRight className="w-4 h-4" />
@@ -200,36 +202,42 @@ export function WeeklyScheduler({ initialWeek = 1, onSave }: WeeklySchedulerProp
             
             <input
               type="text"
-              placeholder="Week theme (e.g., Space Exploration)..."
+              placeholder="Week theme (e.g., Space)..."
               value={schedule.theme}
               onChange={(e) => setSchedule(prev => ({ ...prev, theme: e.target.value }))}
-              className="px-3 py-1 text-sm border rounded-md bg-background w-64"
+              className="px-3 py-1.5 text-sm border rounded-md bg-background w-full sm:w-48 lg:w-64"
             />
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-1 lg:gap-2">
             <Button
               variant="outline"
               size="sm"
+              className="text-xs lg:text-sm px-2 lg:px-3"
               onClick={() => setShowSupplyList(!showSupplyList)}
             >
-              <Package className="w-4 h-4 mr-2" />
-              Supplies ({getAllSupplies().length})
+              <Package className="w-3 h-3 lg:w-4 lg:h-4 mr-1 lg:mr-2" />
+              <span className="hidden sm:inline">Supplies</span>
+              <span className="sm:hidden">Supp.</span>
+              <span className="ml-1">({getAllSupplies().length})</span>
             </Button>
             <Button
               variant="outline"
               size="sm"
+              className="text-xs lg:text-sm px-2 lg:px-3"
               onClick={handlePrint}
             >
-              <Printer className="w-4 h-4 mr-2" />
-              Print
+              <Printer className="w-3 h-3 lg:w-4 lg:h-4 mr-1 lg:mr-2" />
+              <span className="hidden sm:inline">Print</span>
             </Button>
+            
             <Button
               size="sm"
+              className="text-xs lg:text-sm px-2 lg:px-3"
               onClick={handleSave}
             >
-              <Save className="w-4 h-4 mr-2" />
-              Save Week
+              <Save className="w-3 h-3 lg:w-4 lg:h-4 mr-1 lg:mr-2" />
+              <span className="hidden sm:inline">Save</span>
             </Button>
           </div>
         </div>
@@ -296,29 +304,29 @@ function DayColumn({ day, label, activities, onAddActivity, onRemoveActivity, on
 
   return (
     <div className="flex flex-col h-full">
-      <div className="text-center py-2 font-medium border-b mb-2">
+      <div className="text-center py-1.5 lg:py-2 font-medium border-b mb-1.5 lg:mb-2 text-sm lg:text-base">
         {label}
       </div>
       
-      <div className="flex-1 space-y-2 min-h-[200px] lg:min-h-[400px]">
+      <div className="flex-1 space-y-1.5 lg:space-y-2 min-h-[150px] lg:min-h-[400px]">
         {activities.map((activity) => (
           <Card key={activity.id} className="relative group">
-            <CardContent className="p-3">
+            <CardContent className="p-2 lg:p-3">
               <div className="flex items-start justify-between gap-1">
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-sm truncate">{activity.title}</p>
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5 lg:mt-1">
                     <Clock className="w-3 h-3" />
                     {activity.start_time} ({activity.duration_minutes}min)
                   </div>
-                  <Badge variant="outline" className="text-xs mt-2">
+                  <Badge variant="outline" className="text-[10px] lg:text-xs mt-1 lg:mt-2 px-1 py-0">
                     {activity.type}
                   </Badge>
                 </div>
                 <div className="flex flex-col gap-1">
-                  {/* Move dropdown */}
+                  {/* Move dropdown - always visible on mobile, hover on desktop */}
                   <select
-                    className="text-xs px-1 py-0.5 border rounded bg-background opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="text-[10px] lg:text-xs px-1 py-0.5 border rounded bg-background lg:opacity-0 lg:group-hover:opacity-100 transition-opacity"
                     value=""
                     onChange={(e) => {
                       if (e.target.value) {
@@ -335,7 +343,7 @@ function DayColumn({ day, label, activities, onAddActivity, onRemoveActivity, on
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="opacity-0 group-hover:opacity-100 h-6 w-6 p-0"
+                    className="h-5 w-5 lg:h-6 lg:w-6 p-0 lg:opacity-0 lg:group-hover:opacity-100"
                     onClick={() => onRemoveActivity(activity.id)}
                   >
                     <Trash2 className="w-3 h-3 text-destructive" />
@@ -348,10 +356,10 @@ function DayColumn({ day, label, activities, onAddActivity, onRemoveActivity, on
 
         <Button
           variant="outline"
-          className="w-full h-20 border-dashed"
+          className="w-full h-12 lg:h-20 border-dashed text-xs lg:text-sm"
           onClick={() => setShowAddForm(true)}
         >
-          <Plus className="w-4 h-4 mr-2" />
+          <Plus className="w-3 h-3 lg:w-4 lg:h-4 mr-1 lg:mr-2" />
           Add Activity
         </Button>
       </div>
