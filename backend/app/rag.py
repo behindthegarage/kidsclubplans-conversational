@@ -48,7 +48,7 @@ class VectorStore:
         """Generate embedding for text using OpenAI."""
         try:
             response = self.openai_client.embeddings.create(
-                model="text-embedding-3-small",
+                model="text-embedding-3-large",  # 3072 dimensions to match index
                 input=text
             )
             return response.data[0].embedding
