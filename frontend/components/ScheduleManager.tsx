@@ -21,6 +21,7 @@ import {
   Loader2,
   CalendarDays,
   X,
+  Printer,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -85,6 +86,51 @@ export function ScheduleManager({ onSelectSchedule, trigger }: ScheduleManagerPr
     }
   };
 
+  const handlePrint = () => {
+    if (!selectedSchedule) return;
+    
+    // Create a printable window
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      setError('Popup blocked. Please allow popups to print.');
+      return;
+    }
+    
+    const activities = selectedSchedule.activities || [];
+    const activitiesHtml = activities.map((a, i) => `
+      <div style="margin-bottom: 15px; padding: 10px; border: 1px solid #ddd; border-radius: 5px;">
+        <div style="font-weight: bold; color: #333;">${a.start_time} - ${a.title}</div>
+        <div style="color: #666; font-size: 14px; margin-top: 5px;">${a.description || ''}</div>
+        <div style="color: #999; font-size: 12px; margin-top: 5px;">${a.duration_minutes} minutes</div>
+      </div>
+    `).join('');
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Schedule - ${selectedSchedule.date}</title>
+        <style>
+          body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+          h1 { color: #333; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+          .meta { color: #666; margin-bottom: 20px; }
+          @media print { body { padding: 0; } }
+        </style>
+      </head>
+      <body>
+        <h1>Schedule for ${formatDate(selectedSchedule.date)}</h1>
+        <div class="meta">
+          Age Group: ${selectedSchedule.age_group} | Duration: ${selectedSchedule.duration_hours} hours
+        </div>
+        ${activitiesHtml}
+      </body>
+      </html>
+    `);
+    
+    printWindow.document.close();
+    setTimeout(() => printWindow.print(), 100);
+  };
+
   const formatDate = (dateStr: string) => {
     if (!dateStr || dateStr === 'schedule_generated') return 'Generated Schedule';
     try {
@@ -139,6 +185,14 @@ export function ScheduleManager({ onSelectSchedule, trigger }: ScheduleManagerPr
                 ← Back to list
               </Button>
               <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePrint}
+                >
+                  <Printer className="w-4 h-4 mr-1" />
+                  Print
+                </Button>
                 {onSelectSchedule && (
                   <Button
                     size="sm"
