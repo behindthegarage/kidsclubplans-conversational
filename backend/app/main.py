@@ -812,12 +812,11 @@ async def search_activities_endpoint(
         search_query = request.query
         
         # Get semantic matches from Pinecone
+        filter_dict = {"type": request.activity_type} if request.activity_type else None
         semantic_results = vector_store.search(
             query=search_query,
             top_k=request.limit * 2,  # Get more for filtering
-            filter={
-                "type": request.activity_type
-            } if request.activity_type else None
+            filter_dict=filter_dict
         )
         
         # Apply additional filters and format
