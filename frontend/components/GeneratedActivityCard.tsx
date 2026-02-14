@@ -31,14 +31,22 @@ export function GeneratedActivityCard({
   const [isSaving, setIsSaving] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleSave = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsSaving(true);
-    await onSave?.(activity);
-    setIsSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    setSaveError(null);
+    try {
+      await onSave?.(activity);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Failed to save');
+      setTimeout(() => setSaveError(null), 5000);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleAddToSchedule = async (e: React.MouseEvent) => {
@@ -254,6 +262,13 @@ export function GeneratedActivityCard({
               </Button>
             )}
           </div>
+
+          {/* Error Message */}
+          {saveError && (
+            <div className="text-xs text-red-500 mt-2 bg-red-50 p-2 rounded">
+              ⚠️ {saveError}
+            </div>
+          )}
         </CardContent>
       )}
     </Card>
