@@ -3,15 +3,28 @@
 import React from 'react';
 import { Message } from '@/lib/api';
 import { ActivityCard } from './ActivityCard';
-import { User, Bot, Loader2 } from 'lucide-react';
+import { GeneratedActivityCard } from './GeneratedActivityCard';
+import { ToolCallDisplay } from './ToolCallDisplay';
+import { User, Bot, Loader2, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MessageBubbleProps {
   message: Message;
+  onSaveActivity?: (activity: any) => void;
+  onBlendActivity?: (activity: any) => void;
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, onSaveActivity, onBlendActivity }: MessageBubbleProps) {
   const isUser = message.role === 'user';
+
+  // Separate generated activities from regular ones
+  const regularActivities = message.activities?.filter(
+    a => a.source !== 'generated' && a.source !== 'user_generated' && a.source !== 'blended'
+  ) || [];
+  
+  const generatedActivities = message.activities?.filter(
+    a => a.source === 'generated' || a.source === 'user_generated' || a.source === 'blended'
+  ) || [];
 
   return (
     <div
@@ -60,28 +73,41 @@ export function MessageBubble({ message }: MessageBubbleProps) {
           )}
         </div>
 
-        {/* Activity Cards */}
-        {message.activities && message.activities.length > 0 && (
+        {/* Tool Calls */}
+        {message.toolCalls && message.toolCalls.length > 0 && (
+          <div className="w-full mt-2">
+            <ToolCallDisplay toolCalls={message.toolCalls} />
+          </div>
+        )}
+
+        {/* Generated Activities */}
+        {generatedActivities.length > 0 && (
           <div className="w-full mt-3 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground mb-2">
-              Found activities:
-            </p>
-            {message.activities.map((activity) => (
-              <ActivityCard key={activity.id} activity={activity} />
+            <div className="flex items-center gap-2 mb-2">
+              <Sparkles className="w-4 h-4 text-purple-500" />
+              <p className="text-xs font-medium text-purple-600">
+                AI-Generated Activities
+              </p>
+            </div>
+            {generatedActivities.map((activity, idx) => (
+              <GeneratedActivityCard
+                key={`gen-${activity.id || idx}`}
+                activity={activity}
+                onSave={onSaveActivity}
+                onBlend={onBlendActivity}
+              />
             ))}
           </div>
         )}
 
-        {/* Tool Calls */}
-        {message.toolCalls && message.toolCalls.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-2">
-            {message.toolCalls.map((toolCall, idx) => (
-              <span
-                key={idx}
-                className="text-xs px-2 py-1 bg-secondary/50 rounded text-muted-foreground"
-              >
-                🔧 {toolCall.name}
-              </span>
+        {/* Regular Activity Cards */}
+        {regularActivities.length > 0 && (
+          <div className="w-full mt-3 space-y-2">
+            <p className="text-xs font-medium text-muted-foreground mb-2">
+              Found activities:
+            </p>
+            {regularActivities.map((activity) => (
+              <ActivityCard key={activity.id} activity={activity} />
             ))}
           </div>
         )}
