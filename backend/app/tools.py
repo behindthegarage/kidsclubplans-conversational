@@ -507,6 +507,7 @@ def search_activities_tool(
     Search for activities in the database.
     """
     vector_store = _context.get("vector_store") if _context else None
+    memory_manager = _context.get("memory_manager") if _context else None
     
     if not vector_store:
         return {
@@ -524,26 +525,56 @@ def search_activities_tool(
         if age_group:
             enhanced_query = f"{query} for {age_group}"
         
-        activities = rag_search(
+        # Get IDs from Pinecone (semantic search)
+        pinecone_results = rag_search(
             vector_store=vector_store,
             query=enhanced_query,
-            limit=limit,
+            limit=limit * 2,  # Get more for filtering
             activity_type=activity_type
         )
         
-        # Format activities for response
+        # Fetch full activity data from SQLite using IDs
         formatted = []
-        for act in activities:
-            formatted.append({
-                "id": act.get("id"),
-                "title": act.get("title", "Untitled"),
-                "type": act.get("type"),
-                "description": act.get("description"),
-                "age_group": act.get("development_age_group"),
-                "supplies": act.get("supplies"),
-                "score": act.get("score"),
-                "match_quality": "high" if act.get("score", 0) > 0.8 else "medium" if act.get("score", 0) > 0.6 else "low"
-            })
+        for act in pinecone_results:
+            activity_id = act.get("id")
+            score = act.get("score")
+            
+            # Get full activity from SQLite if available
+            full_activity = None
+            if memory_manager:
+                full_activity = memory_manager.get_activity(activity_id)
+            
+            if full_activity:
+                # Use SQLite data (full details)
+                formatted.append({
+                    "id": full_activity.get("id"),
+                    "title": full_activity.get("title", "Untitled"),
+                    "type": full_activity.get("activity_type"),
+                    "description": full_activity.get("description", ""),
+                    "age_group": full_activity.get("target_age_group") or full_activity.get("development_age_group"),
+                    "supplies": full_activity.get("supplies", ""),
+                    "instructions": full_activity.get("instructions", ""),
+                    "duration_minutes": full_activity.get("duration_minutes", 30),
+                    "indoor_outdoor": full_activity.get("indoor_outdoor", "either"),
+                    "score": score,
+                    "match_quality": "high" if score > 0.8 else "medium" if score > 0.6 else "low"
+                })
+            else:
+                # Fallback to Pinecone metadata
+                metadata = act.get("metadata", {})
+                formatted.append({
+                    "id": activity_id,
+                    "title": metadata.get("title", "Untitled"),
+                    "type": metadata.get("type"),
+                    "description": metadata.get("description", ""),
+                    "age_group": metadata.get("development_age_group"),
+                    "supplies": metadata.get("supplies", ""),
+                    "score": score,
+                    "match_quality": "high" if score > 0.8 else "medium" if score > 0.6 else "low"
+                })
+            
+            if len(formatted) >= limit:
+                break
         
         return {
             "success": True,
@@ -580,6 +611,7 @@ def search_activities_with_constraints_tool(
     Enhanced RAG with fallback to generation if no matches found.
     """
     vector_store = _context.get("vector_store") if _context else None
+    memory_manager = _context.get("memory_manager") if _context else None
     
     # Build search query from constraints
     query_parts = []
@@ -605,39 +637,67 @@ def search_activities_with_constraints_tool(
             if duration_minutes:
                 enhanced_query += f" {duration_minutes} minutes"
             
-            activities = rag_search(vector_store, enhanced_query, limit=limit * 2)  # Get more for filtering
+            # Get IDs from Pinecone
+            pinecone_results = rag_search(vector_store, enhanced_query, limit=limit * 3)
             
-            # Filter by supplies if specified
-            if supplies_available and activities:
-                filtered = []
-                for act in activities:
-                    supplies_needed = act.get("supplies", "")
-                    if supplies_needed:
-                        # Check if user has at least some of the supplies
-                        supplies_lower = [s.lower() for s in supplies_available]
-                        has_supplies = any(
-                            supply.lower() in supplies_lower 
-                            for supply in supplies_needed.split(",")
-                        )
-                        if has_supplies or not supplies_needed:
-                            filtered.append(act)
-                    else:
-                        filtered.append(act)
-                activities = filtered
-            
-            # Format results
-            for act in activities[:limit]:
-                results.append({
-                    "id": act.get("id"),
-                    "title": act.get("title", "Untitled"),
-                    "type": act.get("type"),
-                    "description": act.get("description"),
-                    "age_group": act.get("development_age_group"),
-                    "supplies": act.get("supplies"),
-                    "instructions": act.get("instructions"),
-                    "score": act.get("score"),
-                    "source": "database"
-                })
+            # Fetch full data from SQLite
+            for act in pinecone_results:
+                activity_id = act.get("id")
+                score = act.get("score")
+                
+                # Get full activity from SQLite
+                full_activity = None
+                if memory_manager:
+                    full_activity = memory_manager.get_activity(activity_id)
+                
+                if full_activity:
+                    # Check duration constraint
+                    if duration_minutes:
+                        act_duration = full_activity.get("duration_minutes") or 30
+                        if act_duration > duration_minutes * 1.5:  # Allow some flexibility
+                            continue
+                    
+                    # Check supplies constraint
+                    if supplies_available:
+                        supplies_needed = full_activity.get("supplies", "")
+                        if supplies_needed:
+                            supplies_lower = [s.lower() for s in supplies_available]
+                            has_supplies = any(
+                                supply.lower().strip() in supplies_lower 
+                                for supply in supplies_needed.split(",")
+                            )
+                            if not has_supplies:
+                                continue
+                    
+                    results.append({
+                        "id": full_activity.get("id"),
+                        "title": full_activity.get("title", "Untitled"),
+                        "type": full_activity.get("activity_type"),
+                        "description": full_activity.get("description", ""),
+                        "age_group": full_activity.get("target_age_group") or full_activity.get("development_age_group"),
+                        "supplies": full_activity.get("supplies", ""),
+                        "instructions": full_activity.get("instructions", ""),
+                        "duration_minutes": full_activity.get("duration_minutes", 30),
+                        "indoor_outdoor": full_activity.get("indoor_outdoor", "either"),
+                        "score": score,
+                        "source": "database"
+                    })
+                else:
+                    # Fallback to Pinecone metadata
+                    metadata = act.get("metadata", {})
+                    results.append({
+                        "id": activity_id,
+                        "title": metadata.get("title", "Untitled"),
+                        "type": metadata.get("type"),
+                        "description": metadata.get("description", ""),
+                        "age_group": metadata.get("development_age_group"),
+                        "supplies": metadata.get("supplies", ""),
+                        "score": score,
+                        "source": "database"
+                    })
+                
+                if len(results) >= limit:
+                    break
                 
         except Exception as e:
             logger.error(f"Constraint search failed: {e}")
@@ -656,7 +716,7 @@ def search_activities_with_constraints_tool(
             "low_prep_only": low_prep_only
         },
         "count": len(results),
-        "activities": results,
+        "activities": results[:limit],
         "fallback_suggested": should_generate,
         "fallback_message": "No matching activities found in database. Consider using generate_activity to create a custom activity." if should_generate else None
     }
