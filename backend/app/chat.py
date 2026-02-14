@@ -5,6 +5,7 @@ Chat endpoint with streaming responses and function calling.
 from pydantic import BaseModel
 from typing import List, Dict, Optional, AsyncGenerator
 import json
+import logging
 import os
 from datetime import datetime
 import asyncio
@@ -22,10 +23,12 @@ try:
 except ImportError:
     ANTHROPIC_AVAILABLE = False
 
+from app.observability import classify_error, log_event, metrics
 from app.rag import search_activities
 
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "2"))
+logger = logging.getLogger("kcp.chat")
 
 
 class Message(BaseModel):
@@ -116,18 +119,28 @@ async def chat_endpoint(
                     yield f"data: {json.dumps({'type': 'activity', 'data': activity})}\n\n"
                     await asyncio.sleep(0.01)
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'data': {'message': f'RAG error: {str(e)}'}})}\n\n"
+            error_type = classify_error(e)
+            metrics.incr("rag_errors_total")
+            metrics.incr(f"error_type_{error_type}_total")
+            log_event(logger, logging.WARNING, "rag_lookup_failed", error_type=error_type, error=str(e))
+            yield f"data: {json.dumps({'type': 'error', 'data': {'message': f'RAG error: {str(e)}', 'error_type': error_type}})}\n\n"
 
     # Stream model response
     ai_provider = os.getenv("AI_PROVIDER", "openai").lower()
+    log_event(logger, logging.INFO, "llm_stream_start", provider=ai_provider)
 
     if ai_provider == "anthropic" and ANTHROPIC_AVAILABLE:
+        metrics.incr("llm_requests_total")
+        metrics.incr("llm_requests_anthropic_total")
         async for chunk in stream_anthropic(messages):
             yield chunk
     elif OPENAI_AVAILABLE:
+        metrics.incr("llm_requests_total")
+        metrics.incr("llm_requests_openai_total")
         async for chunk in stream_openai(messages):
             yield chunk
     else:
+        metrics.incr("llm_not_configured_total")
         yield f"data: {json.dumps({'type': 'content', 'data': {'content': 'AI service not configured. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY.'}})}\n\n"
 
     # Save memory
@@ -141,6 +154,8 @@ async def chat_endpoint(
 
     # End stream with conversation id
     conv_id = request.conversation_id or request.session_id
+    metrics.incr("chat_stream_completions_total")
+    log_event(logger, logging.INFO, "chat_stream_complete", conversation_id=conv_id)
     yield f"data: {json.dumps({'type': 'done', 'data': {'conversation_id': conv_id}})}\n\n"
 
 
@@ -172,12 +187,24 @@ async def stream_openai(messages: List[Dict]) -> AsyncGenerator[str, None]:
 
         except Exception as e:
             last_error = e
+            error_type = classify_error(e)
+            metrics.incr("openai_errors_total")
+            metrics.incr(f"error_type_{error_type}_total")
+            log_event(
+                logger,
+                logging.WARNING,
+                "openai_attempt_failed",
+                attempt=attempt,
+                max_retries=LLM_MAX_RETRIES,
+                error_type=error_type,
+                error=str(e),
+            )
             if attempt < LLM_MAX_RETRIES:
                 await asyncio.sleep(2 ** attempt)
                 continue
             break
 
-    yield f"data: {json.dumps({'type': 'error', 'data': {'message': f'OpenAI failed after retries: {str(last_error)}'}})}\n\n"
+    yield f"data: {json.dumps({'type': 'error', 'data': {'message': f'OpenAI failed after retries: {str(last_error)}', 'error_type': classify_error(last_error) if last_error else 'internal'}})}\n\n"
 
 
 async def stream_anthropic(messages: List[Dict]) -> AsyncGenerator[str, None]:
@@ -212,9 +239,21 @@ async def stream_anthropic(messages: List[Dict]) -> AsyncGenerator[str, None]:
 
         except Exception as e:
             last_error = e
+            error_type = classify_error(e)
+            metrics.incr("anthropic_errors_total")
+            metrics.incr(f"error_type_{error_type}_total")
+            log_event(
+                logger,
+                logging.WARNING,
+                "anthropic_attempt_failed",
+                attempt=attempt,
+                max_retries=LLM_MAX_RETRIES,
+                error_type=error_type,
+                error=str(e),
+            )
             if attempt < LLM_MAX_RETRIES:
                 await asyncio.sleep(2 ** attempt)
                 continue
             break
 
-    yield f"data: {json.dumps({'type': 'error', 'data': {'message': f'Anthropic failed after retries: {str(last_error)}'}})}\n\n"
+    yield f"data: {json.dumps({'type': 'error', 'data': {'message': f'Anthropic failed after retries: {str(last_error)}', 'error_type': classify_error(last_error) if last_error else 'internal'}})}\n\n"

@@ -4,13 +4,15 @@ FastAPI app with streaming chat via Server-Sent Events
 """
 
 import json
+import logging
 import os
+import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -19,9 +21,18 @@ from .chat import ChatRequest as EngineChatRequest
 from .chat import Message as EngineMessage
 from .chat import chat_endpoint
 from .memory import MemoryManager
+from .observability import (
+    classify_error,
+    configure_logging,
+    log_event,
+    metrics,
+    request_id_ctx,
+)
 from .rag import initialize_vector_store
 
 load_dotenv()
+configure_logging()
+logger = logging.getLogger("kcp.api")
 
 
 # Global instances (single architecture)
@@ -41,12 +52,16 @@ async def lifespan(app: FastAPI):
         if not os.getenv(name)
     ]
     if missing:
+        metrics.incr("startup_errors_total")
         raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
 
     vector_store = initialize_vector_store()
     memory_manager = MemoryManager()
+    log_event(logger, logging.INFO, "startup_complete", vector_store_initialized=vector_store is not None)
 
     yield
+
+    log_event(logger, logging.INFO, "shutdown_complete")
 
 
 app = FastAPI(
@@ -65,6 +80,63 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+
+@app.middleware("http")
+async def request_observability_middleware(request: Request, call_next):
+    req_id = request.headers.get("X-Request-Id") or str(uuid.uuid4())
+    token = request_id_ctx.set(req_id)
+    started = time.perf_counter()
+
+    try:
+        response = await call_next(request)
+    except Exception as exc:
+        metrics.incr("http_requests_total")
+        metrics.incr("http_errors_total")
+        metrics.incr(f"error_type_{classify_error(exc)}_total")
+        log_event(
+            logger,
+            logging.ERROR,
+            "request_failed",
+            method=request.method,
+            path=request.url.path,
+            error_type=classify_error(exc),
+            error=str(exc),
+        )
+        request_id_ctx.reset(token)
+        raise
+
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
+    response.headers["X-Request-Id"] = req_id
+    metrics.incr("http_requests_total")
+    if response.status_code >= 500:
+        metrics.incr("http_errors_total")
+
+    log_event(
+        logger,
+        logging.INFO,
+        "request_complete",
+        method=request.method,
+        path=request.url.path,
+        status_code=response.status_code,
+        duration_ms=elapsed_ms,
+    )
+
+    request_id_ctx.reset(token)
+    return response
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(_: Request, exc: Exception):
+    error_type = classify_error(exc)
+    metrics.incr("unhandled_exceptions_total")
+    metrics.incr(f"error_type_{error_type}_total")
+    log_event(logger, logging.ERROR, "unhandled_exception", error_type=error_type, error=str(exc))
+    return Response(
+        content=json.dumps({"error": {"type": error_type, "message": "Internal server error"}}),
+        status_code=500,
+        media_type="application/json",
+    )
 
 
 class ChatRequest(BaseModel):
@@ -101,6 +173,12 @@ async def health_check():
     }
 
 
+@app.get("/metrics")
+async def metrics_snapshot():
+    """Basic in-memory metrics snapshot (PR7 hook point)."""
+    return {"metrics": metrics.snapshot()}
+
+
 @app.post("/chat")
 async def chat_stream(request: ChatRequest, http_request: Request):
     """
@@ -119,6 +197,16 @@ async def chat_stream(request: ChatRequest, http_request: Request):
     conversation_id = request.conversation_id or str(uuid.uuid4())
     trusted_user_id, is_new_session = _get_or_create_session_user_id(http_request)
 
+    metrics.incr("chat_requests_total")
+    log_event(
+        logger,
+        logging.INFO,
+        "chat_request_received",
+        conversation_id=conversation_id,
+        new_session=is_new_session,
+        message_chars=len(request.message),
+    )
+
     engine_request = EngineChatRequest(
         messages=[EngineMessage(role="user", content=request.message)],
         user_id=trusted_user_id,
@@ -132,7 +220,18 @@ async def chat_stream(request: ChatRequest, http_request: Request):
             async for chunk in chat_endpoint(engine_request, vector_store, memory_manager):
                 yield chunk
         except Exception as e:
-            yield f"data: {json.dumps({'type': 'error', 'data': {'message': str(e)}})}\n\n"
+            error_type = classify_error(e)
+            metrics.incr("chat_stream_errors_total")
+            metrics.incr(f"error_type_{error_type}_total")
+            log_event(
+                logger,
+                logging.ERROR,
+                "chat_stream_failed",
+                conversation_id=conversation_id,
+                error_type=error_type,
+                error=str(e),
+            )
+            yield f"data: {json.dumps({'type': 'error', 'data': {'message': str(e), 'error_type': error_type}})}\n\n"
             yield f"data: {json.dumps({'type': 'done', 'data': {'conversation_id': conversation_id}})}\n\n"
 
     response = StreamingResponse(
