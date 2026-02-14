@@ -313,7 +313,7 @@ async def clear_conversation(conversation_id: str):
 
 
 # Profile endpoints for Phase 2: Context & Memory
-@app.get("/profile")
+@app.get("/api/profile")
 async def get_profile(http_request: Request):
     """Get current user's profile."""
     if not memory_manager:
@@ -324,10 +324,10 @@ async def get_profile(http_request: Request):
     
     if profile:
         return profile.model_dump()
-    return {"message": "No profile found. Create one with POST /profile"}
+    return {"message": "No profile found. Create one with POST /api/profile"}
 
 
-@app.post("/profile")
+@app.post("/api/profile")
 async def create_or_update_profile(request: UserProfileUpdate, http_request: Request):
     """Create or update user profile."""
     if not memory_manager:
@@ -347,7 +347,7 @@ async def create_or_update_profile(request: UserProfileUpdate, http_request: Req
     return profile.model_dump()
 
 
-@app.get("/profile/stats")
+@app.get("/api/profile/stats")
 async def get_profile_stats(http_request: Request):
     """Get user statistics and learned patterns."""
     if not memory_manager:
@@ -358,7 +358,7 @@ async def get_profile_stats(http_request: Request):
     return stats
 
 
-@app.get("/conversations")
+@app.get("/api/conversations")
 async def get_user_conversations(http_request: Request, limit: int = 20):
     """Get user's conversation history across all sessions."""
     if not memory_manager:
