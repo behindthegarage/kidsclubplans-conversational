@@ -29,6 +29,7 @@ from .observability import (
     request_id_ctx,
 )
 from .rag import initialize_vector_store
+from .safety import chat_rate_limiter, normalize_text
 
 load_dotenv()
 configure_logging()
@@ -196,6 +197,20 @@ async def chat_stream(request: ChatRequest, http_request: Request):
 
     conversation_id = request.conversation_id or str(uuid.uuid4())
     trusted_user_id, is_new_session = _get_or_create_session_user_id(http_request)
+
+    allowed, retry_after = chat_rate_limiter.allow(trusted_user_id)
+    if not allowed:
+        metrics.incr("rate_limited_requests_total")
+        log_event(
+            logger,
+            logging.WARNING,
+            "chat_rate_limited",
+            conversation_id=conversation_id,
+            retry_after=retry_after,
+        )
+        raise HTTPException(status_code=429, detail=f"Rate limit exceeded. Retry in {retry_after}s")
+
+    request.message = normalize_text(request.message)
 
     metrics.incr("chat_requests_total")
     log_event(

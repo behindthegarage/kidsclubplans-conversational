@@ -25,6 +25,7 @@ except ImportError:
 
 from app.observability import classify_error, log_event, metrics
 from app.rag import search_activities
+from app.safety import check_input_safety
 
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "2"))
@@ -102,6 +103,16 @@ async def chat_endpoint(
         if msg.role == "user":
             last_user_message = msg.content
             break
+
+    # Safety guardrail before retrieval/model call
+    is_safe, safety_msg = check_input_safety(last_user_message or "")
+    if not is_safe:
+        metrics.incr("safety_blocked_requests_total")
+        log_event(logger, logging.WARNING, "safety_blocked_input", reason=safety_msg)
+        yield f"data: {json.dumps({'type': 'error', 'data': {'message': safety_msg, 'error_type': 'safety'}})}\n\n"
+        conv_id = request.conversation_id or request.session_id
+        yield f"data: {json.dumps({'type': 'done', 'data': {'conversation_id': conv_id}})}\n\n"
+        return
 
     # RAG retrieval + emit activity events
     activity_context = []
