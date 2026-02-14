@@ -22,6 +22,7 @@ import {
   CalendarDays,
   X,
   Printer,
+  Package,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -269,6 +270,28 @@ export function ScheduleManager({ onSelectSchedule, trigger }: ScheduleManagerPr
                     </div>
                   ))}
                 </div>
+
+                {/* Supply Checklist */}
+                {selectedSchedule.activities?.some(a => a.supplies_needed?.length) && (
+                  <div className="border rounded-lg p-4 bg-muted/30">
+                    <h4 className="font-medium flex items-center gap-2 mb-3">
+                      <Package className="w-4 h-4" />
+                      Supply Checklist
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {Array.from(new Set(
+                        selectedSchedule.activities
+                          ?.flatMap(a => a.supplies_needed || [])
+                          .filter(Boolean)
+                      )).sort().map((supply, i) => (
+                        <label key={i} className="flex items-center gap-2 text-sm">
+                          <input type="checkbox" className="rounded border-gray-300" />
+                          <span>{supply}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </ScrollArea>
           </div>
