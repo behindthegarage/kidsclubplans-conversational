@@ -1,19 +1,26 @@
-FROM python:3.11-slim
+FROM python:3.13-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Create non-root user
+RUN addgroup --system app && adduser --system --ingroup app app
 
-# Copy application code
+# Install dependencies first for layer caching
+COPY requirements.txt ./
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
+# Copy app source
 COPY app/ ./app/
 
-# Create data directory
-RUN mkdir -p /app/data
+# Create writable paths and set ownership
+RUN mkdir -p /app/data /tmp && chown -R app:app /app /tmp
 
-# Expose port
+USER app
+
 EXPOSE 8000
 
-# Run the application
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
