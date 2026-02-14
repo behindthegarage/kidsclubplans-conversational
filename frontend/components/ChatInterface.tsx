@@ -6,6 +6,7 @@ import { Message, Activity, ToolCall, streamChatWithRetry, saveActivity } from '
 import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
 import { Phase4ToolsPanel } from './Phase4ToolsPanel';
+import { ScheduleManager } from './ScheduleManager';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Trash2, Sparkles, Wand2, X } from 'lucide-react';
@@ -240,6 +241,7 @@ export function ChatInterface() {
         </div>
 
         <div className="flex items-center gap-2">
+          <ScheduleManager />
           <Button
             variant={showTools ? "default" : "outline"}
             size="sm"

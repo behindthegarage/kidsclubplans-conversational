@@ -353,6 +353,51 @@ export async function getSchedule(scheduleId: string): Promise<Schedule> {
   return response.json();
 }
 
+export interface ScheduleListResponse {
+  schedules: Schedule[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export async function listSchedules(
+  limit: number = 10,
+  offset: number = 0
+): Promise<ScheduleListResponse> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+  const response = await fetch(
+    `${apiUrl}/api/schedules?limit=${limit}&offset=${offset}`,
+    {
+      credentials: 'include',
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`List schedules API error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export async function deleteSchedule(scheduleId: string): Promise<{ success: boolean; message: string }> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+  const response = await fetch(`${apiUrl}/api/schedule/${scheduleId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error('Schedule not found');
+    }
+    throw new Error(`Delete schedule API error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
 // Phase 4: Save Activity API
 
 export interface SaveActivityRequest {

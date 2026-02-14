@@ -532,6 +532,86 @@ async def get_schedule(schedule_id: str, http_request: Request):
         }
 
 
+@app.get("/api/schedules")
+async def list_schedules(
+    http_request: Request,
+    limit: int = 10,
+    offset: int = 0
+):
+    """List saved schedules for the current user."""
+    if not memory_manager:
+        raise HTTPException(status_code=503, detail="Memory manager not initialized")
+    
+    trusted_user_id, _ = _get_or_create_session_user_id(http_request)
+    
+    with sqlite3.connect(memory_manager.db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        
+        # Get total count
+        count_row = conn.execute(
+            "SELECT COUNT(*) as count FROM schedules WHERE user_id = ?",
+            (trusted_user_id,)
+        ).fetchone()
+        total = count_row["count"]
+        
+        # Get schedules
+        rows = conn.execute(
+            """SELECT id, date, title, age_group, duration_hours, created_at 
+               FROM schedules 
+               WHERE user_id = ? 
+               ORDER BY created_at DESC 
+               LIMIT ? OFFSET ?""",
+            (trusted_user_id, limit, offset)
+        ).fetchall()
+        
+        schedules = [
+            {
+                "id": row["id"],
+                "date": row["date"],
+                "title": row["title"],
+                "age_group": row["age_group"],
+                "duration_hours": row["duration_hours"],
+                "created_at": row["created_at"]
+            }
+            for row in rows
+        ]
+        
+        return {
+            "schedules": schedules,
+            "total": total,
+            "limit": limit,
+            "offset": offset
+        }
+
+
+@app.delete("/api/schedule/{schedule_id}")
+async def delete_schedule(schedule_id: str, http_request: Request):
+    """Delete a saved schedule."""
+    if not memory_manager:
+        raise HTTPException(status_code=503, detail="Memory manager not initialized")
+    
+    trusted_user_id, _ = _get_or_create_session_user_id(http_request)
+    
+    with sqlite3.connect(memory_manager.db_path) as conn:
+        # Check if schedule exists and belongs to user
+        row = conn.execute(
+            "SELECT 1 FROM schedules WHERE id = ? AND user_id = ?",
+            (schedule_id, trusted_user_id)
+        ).fetchone()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+        
+        # Delete the schedule
+        conn.execute(
+            "DELETE FROM schedules WHERE id = ? AND user_id = ?",
+            (schedule_id, trusted_user_id)
+        )
+        conn.commit()
+        
+    return {"success": True, "message": "Schedule deleted"}
+
+
 def generate_schedule_template(
     date: str,
     age_group: str,
