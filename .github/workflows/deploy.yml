@@ -37,8 +37,8 @@ jobs:
             git pull origin main
             
             # Ensure .env exists (should be manually created on VPS with secrets)
-            if [ ! -f .env ]; then
-              echo "⚠️ .env file not found on VPS. Create it manually with required secrets."
+            if [ ! -f backend/.env ]; then
+              echo "⚠️ backend/.env file not found on VPS. Create it manually with required secrets."
               exit 1
             fi
             
