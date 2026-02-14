@@ -13,7 +13,16 @@ import { useRouter } from 'next/navigation';
 
 export default function ActivitiesPage() {
   const router = useRouter();
-  
+
+  const handleAddMultipleToWeek = (activities: any[], weekNumber: number) => {
+    // Store selected activities for the week
+    const key = `week-${weekNumber}-activities`;
+    const existing = JSON.parse(localStorage.getItem(key) || '[]');
+    const updated = [...existing, ...activities.map(a => ({ ...a, day: 'Monday' }))];
+    localStorage.setItem(key, JSON.stringify(updated));
+    alert(`Added ${activities.length} activities to Week ${weekNumber}`);
+  };
+
   return (
     <div className="h-screen flex flex-col">
       {/* Header */}
@@ -75,7 +84,7 @@ export default function ActivitiesPage() {
       </header>
 
       <div className="flex-1 overflow-hidden">
-        <ActivityBrowser />
+        <ActivityBrowser onAddMultipleToWeek={handleAddMultipleToWeek} />
       </div>
     </div>
   );
