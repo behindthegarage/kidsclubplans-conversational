@@ -5,9 +5,10 @@ import { v4 as uuidv4 } from 'uuid';
 import { Message, Activity, ToolCall, streamChatWithRetry } from '@/lib/api';
 import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
+import { Phase4ToolsPanel } from './Phase4ToolsPanel';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Trash2, Sparkles } from 'lucide-react';
+import { Trash2, Sparkles, Wand2, X } from 'lucide-react';
 
 const WELCOME = `👋 Hi! I'm your KidsClubPlans assistant. I can help you:
 
@@ -30,6 +31,13 @@ export function ChatInterface() {
   const [isLoading, setIsLoading] = useState(false);
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
   const [currentStreamId, setCurrentStreamId] = useState<string | null>(null);
+  const [showTools, setShowTools] = useState(false);
+  const [toolLoading, setToolLoading] = useState({
+    supply: false,
+    blend: false,
+    gap: false,
+  });
+  const [gapAnalysis, setGapAnalysis] = useState<any>(undefined);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -61,7 +69,6 @@ export function ChatInterface() {
 
   const handleSend = useCallback(
     async (content: string) => {
-      // Cancel any in-flight stream to avoid races/token waste
       if (activeAbortRef.current) {
         activeAbortRef.current.abort();
       }
@@ -178,6 +185,30 @@ export function ChatInterface() {
     setIsLoading(false);
   }, []);
 
+  const handleSupplyGenerate = useCallback((supplies: string[], ageGroup: string) => {
+    const supplyList = supplies.join(', ');
+    handleSend(`I have ${supplyList}. Generate activity ideas for ${ageGroup}.`);
+    setShowTools(false);
+  }, [handleSend]);
+
+  const handleBlend = useCallback((activities: string[], focus: string) => {
+    const activityList = activities.join(' and ');
+    handleSend(`Blend ${activityList} with a ${focus} focus.`);
+    setShowTools(false);
+  }, [handleSend]);
+
+  const handleGapAnalysis = useCallback(async () => {
+    setToolLoading(prev => ({ ...prev, gap: true }));
+    handleSend("Analyze my database for gaps and missing coverage.");
+    setToolLoading(prev => ({ ...prev, gap: false }));
+    setShowTools(false);
+  }, [handleSend]);
+
+  const handleGenerateFromSuggestion = useCallback((suggestion: string) => {
+    handleSend(`Generate activities to fill this gap: ${suggestion}`);
+    setShowTools(false);
+  }, [handleSend]);
+
   return (
     <div className="flex flex-col h-full bg-background">
       <header className="flex items-center justify-between px-4 py-3 border-b bg-card">
@@ -192,6 +223,14 @@ export function ChatInterface() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Button
+            variant={showTools ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowTools(!showTools)}
+          >
+            <Wand2 className="w-4 h-4 mr-1" />
+            {showTools ? 'Hide Tools' : 'Tools'}
+          </Button>
           {isLoading && (
             <Button variant="secondary" size="sm" onClick={cancelCurrentStream}>
               Stop
@@ -209,6 +248,25 @@ export function ChatInterface() {
           </Button>
         </div>
       </header>
+
+      {showTools && (
+        <div className="border-b bg-card p-4 max-h-[400px] overflow-y-auto">
+          <div className="flex items-center justify-between mb-2">
+            <h2 className="text-sm font-semibold">Phase 4 Tools</h2>
+            <Button variant="ghost" size="sm" onClick={() => setShowTools(false)}>
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+          <Phase4ToolsPanel
+            onSupplyGenerate={handleSupplyGenerate}
+            onBlend={handleBlend}
+            onGapAnalysis={handleGapAnalysis}
+            onGenerateFromSuggestion={handleGenerateFromSuggestion}
+            gapAnalysis={gapAnalysis}
+            isLoading={toolLoading}
+          />
+        </div>
+      )}
 
       <ScrollArea className="flex-1 px-4" ref={scrollRef}>
         <div className="py-4 space-y-1">
