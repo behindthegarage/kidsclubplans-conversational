@@ -785,6 +785,90 @@ async def save_activity_endpoint(
         )
 
 
+# Activity Browser Endpoints
+class ActivitySearchRequest(BaseModel):
+    query: str
+    age_group: Optional[str] = None
+    activity_type: Optional[str] = None
+    indoor_outdoor: Optional[str] = None
+    max_duration: Optional[int] = 120
+    limit: int = 20
+
+
+@app.post("/api/activities/search")
+async def search_activities_endpoint(
+    request: ActivitySearchRequest,
+    http_request: Request
+):
+    """
+    Search activities with semantic + filter support.
+    Uses vector search for semantic matching, then applies filters.
+    """
+    if not vector_store:
+        raise HTTPException(status_code=503, detail="Vector store not initialized")
+    
+    try:
+        # Build search query combining theme and filters
+        search_query = request.query
+        
+        # Get semantic matches from Pinecone
+        semantic_results = vector_store.search(
+            query=search_query,
+            top_k=request.limit * 2,  # Get more for filtering
+            filter={
+                "type": request.activity_type
+            } if request.activity_type else None
+        )
+        
+        # Apply additional filters and format
+        activities = []
+        for match in semantic_results:
+            metadata = match.get("metadata", {})
+            
+            # Filter by age group if specified
+            if request.age_group:
+                activity_age = metadata.get("development_age_group", "")
+                if request.age_group not in activity_age:
+                    continue
+            
+            # Filter by indoor/outdoor if specified
+            if request.indoor_outdoor:
+                activity_io = metadata.get("indoor_outdoor", "either")
+                if activity_io != request.indoor_outdoor and activity_io != "either":
+                    continue
+            
+            # Filter by duration if specified
+            if request.max_duration:
+                duration = metadata.get("duration_minutes", 60)
+                if duration > request.max_duration:
+                    continue
+            
+            activities.append({
+                "id": match.get("id"),
+                "title": metadata.get("title", "Untitled"),
+                "description": metadata.get("description", ""),
+                "type": metadata.get("type", "Other"),
+                "development_age_group": metadata.get("development_age_group", "6-12 years"),
+                "supplies": metadata.get("supplies", ""),
+                "duration_minutes": metadata.get("duration_minutes"),
+                "indoor_outdoor": metadata.get("indoor_outdoor", "either"),
+                "score": match.get("score"),
+            })
+            
+            if len(activities) >= request.limit:
+                break
+        
+        return {
+            "activities": activities,
+            "total": len(activities),
+            "query": request.query
+        }
+        
+    except Exception as e:
+        logger.error(f"Activity search failed: {e}")
+        raise HTTPException(status_code=500, detail="Search failed")
+
+
 # Phase 7: Voice Input (Whisper Integration)
 import subprocess
 import tempfile

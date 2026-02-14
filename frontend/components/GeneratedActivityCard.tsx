@@ -18,6 +18,9 @@ interface GeneratedActivityCardProps {
   onBlend?: (activity: Activity) => void;
   onAddToSchedule?: (activity: Activity) => void;
   className?: string;
+  selectable?: boolean;
+  isSelected?: boolean;
+  onSelect?: (activity: Activity, selected: boolean) => void;
 }
 
 export function GeneratedActivityCard({ 
@@ -25,7 +28,10 @@ export function GeneratedActivityCard({
   onSave, 
   onBlend, 
   onAddToSchedule,
-  className 
+  className,
+  selectable = false,
+  isSelected = false,
+  onSelect
 }: GeneratedActivityCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -81,6 +87,15 @@ export function GeneratedActivityCard({
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1">
             <div className="flex items-center gap-2">
+              {selectable && (
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onChange={(e) => onSelect?.(activity, e.target.checked)}
+                  onClick={(e) => e.stopPropagation()}
+                  className="w-4 h-4 rounded border-gray-300 mr-1"
+                />
+              )}
               {isGenerated && (
                 <Sparkles className="w-4 h-4 text-purple-500" />
               )}

@@ -1,21 +1,25 @@
 'use client';
 
-import React from 'react';
-import { Message } from '@/lib/api';
+import React, { useState } from 'react';
+import { Message, Activity } from '@/lib/api';
 import { ActivityCard } from './ActivityCard';
 import { GeneratedActivityCard } from './GeneratedActivityCard';
 import { ToolCallDisplay } from './ToolCallDisplay';
-import { User, Bot, Loader2, Sparkles } from 'lucide-react';
+import { User, Bot, Loader2, Sparkles, Save, CheckSquare } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface MessageBubbleProps {
   message: Message;
   onSaveActivity?: (activity: any) => void;
   onBlendActivity?: (activity: any) => void;
+  onSaveMultiple?: (activities: any[]) => void;
 }
 
-export function MessageBubble({ message, onSaveActivity, onBlendActivity }: MessageBubbleProps) {
+export function MessageBubble({ message, onSaveActivity, onBlendActivity, onSaveMultiple }: MessageBubbleProps) {
   const isUser = message.role === 'user';
+  const [selectedActivities, setSelectedActivities] = useState<Set<string>>(new Set());
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
 
   // Separate generated activities from regular ones
   const regularActivities = message.activities?.filter(
@@ -25,6 +29,36 @@ export function MessageBubble({ message, onSaveActivity, onBlendActivity }: Mess
   const generatedActivities = message.activities?.filter(
     a => a.source === 'generated' || a.source === 'user_generated' || a.source === 'blended' || a.generated
   ) || [];
+
+  const handleSelectActivity = (activity: Activity, selected: boolean) => {
+    const id = activity.id || activity.title;
+    if (!id) return;
+    setSelectedActivities(prev => {
+      const newSet = new Set<string>(prev);
+      if (selected) {
+        newSet.add(id as string);
+      } else {
+        newSet.delete(id as string);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSaveSelected = async () => {
+    const activitiesToSave = generatedActivities.filter(a => 
+      selectedActivities.has(String(a.id || a.title))
+    );
+    
+    for (const activity of activitiesToSave) {
+      await onSaveActivity?.(activity);
+    }
+    
+    setSelectedActivities(new Set());
+    setIsSelectionMode(false);
+  };
+
+  const hasGeneratedActivities = generatedActivities.length > 0;
+  const selectedCount = selectedActivities.size;
 
   return (
     <div
