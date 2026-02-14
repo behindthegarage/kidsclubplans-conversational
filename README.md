@@ -148,4 +148,3 @@ The frontend uses Tailwind CSS with shadcn/ui components. Customize in:
 ## License
 
 MIT
-# Auto-deploy test
