@@ -24,6 +24,7 @@ import {
   Printer,
   Package,
   Copy,
+  Download,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -163,6 +164,54 @@ export function ScheduleManager({ onSelectSchedule, trigger }: ScheduleManagerPr
     }
   };
 
+  const handleExportToCalendar = () => {
+    if (!selectedSchedule) return;
+
+    // Generate ICS file content
+    const date = selectedSchedule.date || new Date().toISOString().split('T')[0];
+    const dateFormatted = date.replace(/-/g, '');
+
+    let icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//KidsClubPlans//Schedule//EN
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+`;
+
+    selectedSchedule.activities?.forEach((activity, index) => {
+      const startTime = activity.start_time || '09:00';
+      const [hours, minutes] = startTime.split(':');
+      const duration = activity.duration_minutes || 30;
+      const endHour = parseInt(hours) + Math.floor((parseInt(minutes) + duration) / 60);
+      const endMin = (parseInt(minutes) + duration) % 60;
+      const endTime = `${endHour.toString().padStart(2, '0')}:${endMin.toString().padStart(2, '0')}`;
+
+      const startDateTime = `${dateFormatted}T${hours}${minutes}00`;
+      const endDateTime = `${dateFormatted}T${endTime.replace(':', '')}00`;
+
+      icsContent += `BEGIN:VEVENT
+UID:${selectedSchedule.id}-${index}@kidsclubplans.app
+DTSTART;TZID=America/Detroit:${startDateTime}
+DTEND;TZID=America/Detroit:${endDateTime}
+SUMMARY:${activity.title}
+DESCRIPTION:${activity.description || ''}
+STATUS:CONFIRMED
+END:VEVENT
+`;
+    });
+
+    icsContent += 'END:VCALENDAR';
+
+    // Create and download file
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `schedule-${date}.ics`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const formatDate = (dateStr: string) => {
     if (!dateStr || dateStr === 'schedule_generated') return 'Generated Schedule';
     try {
@@ -237,6 +286,14 @@ export function ScheduleManager({ onSelectSchedule, trigger }: ScheduleManagerPr
                     <Copy className="w-4 h-4 mr-1" />
                   )}
                   Duplicate
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportToCalendar}
+                >
+                  <Download className="w-4 h-4 mr-1" />
+                  Export .ics
                 </Button>
                 {onSelectSchedule && (
                   <Button
