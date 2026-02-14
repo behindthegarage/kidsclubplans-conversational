@@ -854,7 +854,7 @@ async def search_activities_endpoint(
                     continue
             
             if request.max_duration:
-                duration = activity.get("duration_minutes", 60)
+                duration = activity.get("duration_minutes") or 60
                 if duration > request.max_duration:
                     continue
             
@@ -865,7 +865,7 @@ async def search_activities_endpoint(
                 "type": activity.get("activity_type", "Other"),
                 "development_age_group": activity.get("development_age_group", "6-12 years"),
                 "supplies": activity.get("supplies", ""),
-                "duration_minutes": activity.get("duration_minutes"),
+                "duration_minutes": activity.get("duration_minutes") or 30,
                 "indoor_outdoor": activity.get("indoor_outdoor", "either"),
                 "score": score,
             })
