@@ -1051,23 +1051,23 @@ def generate_from_supplies_tool(
     supplies_lower = [s.lower() for s in supplies]
     duration = duration_minutes or 30
     
-    # Supply-based templates
+    # Supply-based templates with RICH content
     supply_combinations = {
         "paper_plates": {
             "matches": ["paper plate", "plates"],
             "activities": [
                 {
                     "title": "Paper Plate Frisbees",
-                    "description": f"Decorate paper plates, then use them for indoor frisbee toss games. Perfect for {age_group}.",
-                    "supplies_needed": ["paper plates", "markers/crayons"],
-                    "instructions": "1. Decorate plates. 2. Practice tossing to partners. 3. Create target zones.",
+                    "description": f"Children decorate paper plates with colorful designs, then use them for indoor frisbee toss games. This activity combines artistic expression with physical coordination. Kids will love seeing their decorated plates fly through the air while practicing aim and teamwork. Perfect for developing fine motor skills and hand-eye coordination for {age_group}.",
+                    "supplies_needed": ["paper plates", "markers/crayons", "stickers (optional)"],
+                    "instructions": "1. Give each child a paper plate and markers. 2. Encourage them to decorate with colors, patterns, or faces. 3. Once decorated, demonstrate how to hold and toss the plate like a frisbee. 4. Have children practice tossing to partners. 5. Create target zones with tape on the floor for accuracy challenges. 6. Variations: Try different throwing styles, distance challenges, or team relay races.",
                     "duration_minutes": duration
                 },
                 {
                     "title": "Paper Plate Masks",
-                    "description": "Create character masks by cutting eye holes and decorating.",
-                    "supplies_needed": ["paper plates", "scissors", "markers", "string"],
-                    "instructions": "1. Cut eye holes. 2. Decorate. 3. Attach string. 4. Have a mask parade.",
+                    "description": "Children create character masks by cutting eye holes and decorating with markers, paint, or craft supplies. This imaginative activity encourages creativity and storytelling. Kids can become animals, superheroes, or fantasy creatures. The mask-making process develops fine motor skills through cutting and detailed decorating.",
+                    "supplies_needed": ["paper plates", "scissors", "markers or paint", "string or elastic", "hole punch"],
+                    "instructions": "1. Help children mark and cut out eye holes in their plates. 2. Provide markers, paint, or other decorations for the face design. 3. Encourage creativity - animals, monsters, superheroes, or abstract designs. 4. Use hole punch to make holes on sides for string. 5. Tie string securely so mask stays on. 6. Host a mask parade where children show off their creations and act in character. 7. Take photos for memory books.",
                     "duration_minutes": duration
                 }
             ]
@@ -1076,17 +1076,17 @@ def generate_from_supplies_tool(
             "matches": ["balloon"],
             "activities": [
                 {
-                    "title": "Balloon Keep-Up",
-                    "description": "Cooperative game keeping balloons in the air.",
-                    "supplies_needed": ["balloons"],
-                    "instructions": "1. Inflate balloons. 2. Keep them up together. 3. Add challenges: no hands, one finger only.",
+                    "title": "Balloon Keep-Up Challenge",
+                    "description": "A cooperative game where children work together to keep balloons in the air without letting them touch the ground. This engaging team-building activity develops coordination, communication, and strategic thinking. Children learn to anticipate movement and work together toward a common goal. The challenge level can be adjusted for different age groups.",
+                    "supplies_needed": ["balloons (several per group)", "optional: paper plates as paddles"],
+                    "instructions": "1. Divide children into small groups of 3-5. 2. Give each group 2-3 balloons. 3. Challenge: Keep all balloons in the air for as long as possible. 4. Start with simple rules (hands only), then add challenges: no hands (use heads, knees, elbows), one finger only, or use paper plate paddles. 5. Count successful hits or time how long they can keep balloons up. 6. Discuss strategies that worked best. 7. Celebrate teamwork and cooperation.",
                     "duration_minutes": duration
                 },
                 {
                     "title": "Balloon Tennis",
-                    "description": "Play tennis using balloons and paper plate paddles.",
-                    "supplies_needed": ["balloons", "paper plates", "popsicle sticks"],
-                    "instructions": "1. Make paddles with plates and sticks. 2. Hit balloon back and forth.",
+                    "description": "Children create paddles using paper plates and popsicle sticks, then play tennis with balloons. This active game combines craft-making with physical play. The slow-moving balloon makes it accessible for all skill levels while still providing excitement. Great for developing hand-eye coordination and reflexes in a low-pressure environment.",
+                    "supplies_needed": ["balloons", "paper plates", "popsicle sticks or rulers", "tape or glue", "optional: yarn for net"],
+                    "instructions": "1. Children make paddles by attaching popsicle sticks to paper plates with tape or glue. 2. Decorate paddles if time allows. 3. Inflate balloons (don't overfill - slower is better for this game). 4. Set up a 'net' using yarn or tape on the floor. 5. Demonstrate hitting the balloon back and forth over the net. 6. Play singles or doubles matches. 7. Keep score or just rally for fun. 8. Variations: How many hits can partners make? Can you hit it high? Low? 9. Rotate partners to mix up the teams.",
                     "duration_minutes": duration
                 }
             ]
@@ -1095,18 +1095,57 @@ def generate_from_supplies_tool(
             "matches": ["string", "yarn", "ribbon"],
             "activities": [
                 {
-                    "title": "String Sculptures",
-                    "description": "Create 3D art by wrapping string around objects.",
-                    "supplies_needed": ["string/yarn", "paper clips/coat hangers", "tape"],
-                    "instructions": "1. Create framework. 2. Wrap string in patterns. 3. Display creations.",
+                    "title": "String Sculpture Gallery",
+                    "description": "Children create three-dimensional art by wrapping string around objects, hangers, or frames. This open-ended art activity encourages spatial thinking and creativity. The resulting sculptures can be hung as mobile art or displayed as standing pieces. Perfect for developing fine motor skills and artistic expression.",
+                    "supplies_needed": ["string, yarn, or ribbon (various colors)", "paper clips or coat hangers", "tape or glue", "optional: beads, straws, or cardboard shapes"],
+                    "instructions": "1. Show examples of string art and sculptures. 2. Demonstrate wrapping techniques: around objects, through holes, weaving patterns. 3. Provide hangers or frames as bases. 4. Let children wrap string in any pattern they choose. 5. Add beads, straws, or shapes by threading them on. 6. Secure ends with tape or knots. 7. Create a gallery display of finished sculptures. 8. Have artists explain their designs. 9. Take photos of the art installation.",
                     "duration_minutes": duration
                 },
                 {
-                    "title": "String Phone",
-                    "description": "Classic science activity exploring sound waves.",
-                    "supplies_needed": ["string", "paper cups", "pencils"],
-                    "instructions": "1. Poke holes in cups. 2. Thread string through. 3. Tie knots. 4. Test across room.",
+                    "title": "String Telephone Science",
+                    "description": "Classic science exploration of sound waves using cups and string. Children build working telephones and discover how sound travels through solids. This hands-on STEM activity teaches basic physics concepts while being incredibly fun. Kids will be amazed they can actually hear their friends through the string!",
+                    "supplies_needed": ["string or yarn (at least 10 feet)", "paper cups (2 per child)", "pencils or pins for poking holes", "optional: paperclips for reinforcement"],
+                    "instructions": "1. Discuss how sound travels - through air, but also through solids. 2. Give each child two cups and string. 3. Help them poke small holes in the bottom center of each cup. 4. Thread string through holes and tie knots (paperclips can reinforce). 5. Keep string taut between partners. 6. One child speaks into cup while other listens at their cup. 7. Test at different distances. 8. Try with loose vs. taut string. 9. Discuss why it works (sound vibrations travel through string). 10. Try three-way calls by connecting multiple strings to one cup. 11. Document discoveries in science journals.",
                     "duration_minutes": 20
+                }
+            ]
+        },
+        "playdough": {
+            "matches": ["playdough", "play dough", "clay"],
+            "activities": [
+                {
+                    "title": "Playdough Challenge Creations",
+                    "description": "A creative challenge where children use playdough and provided tools to create based on prompts or themes. This open-ended activity sparks imagination while developing fine motor skills. The tactile nature of playdough makes it engaging for all ages. Challenges can range from simple (make an animal) to complex (create a scene from a story).",
+                    "supplies_needed": ["playdough (multiple colors)", "plastic knives or tools", "rolling pins or cylindrical objects", "optional: googly eyes, feathers, beads"],
+                    "instructions": "1. Give each child a portion of playdough. 2. Present the challenge: 'Create something that...' (flies, lives underwater, is from the future, etc.). 3. Demonstrate basic techniques: rolling, pinching, flattening, combining colors. 4. Let children create independently for 15-20 minutes. 5. Walk around and ask about their creations. 6. Gather for a gallery walk where each child presents their work. 7. Take photos of the creations. 8. Optional: Create a collaborative sculpture by combining pieces. 9. Clean up with playdough 'snakes' to pick up crumbs.",
+                    "duration_minutes": duration
+                }
+            ]
+        },
+        "paint_brushes": {
+            "matches": ["paint", "brushes", "watercolor"],
+            "activities": [
+                {
+                    "title": "Collaborative Mural Painting",
+                    "description": "Large-scale painting on butcher paper or cardboard where children contribute to a collective artwork. This collaborative art experience builds community while allowing individual expression. The large format encourages whole-body movement and bold artistic choices. Themes can tie to curriculum, seasons, or student interests.",
+                    "supplies_needed": ["paint (tempera or acrylic)", "brushes of various sizes", "large paper or cardboard", "water cups", "paper towels", "optional: smocks or old shirts"],
+                    "instructions": "1. Lay out large paper on floor or tables. 2. Discuss the theme or let it be open-ended. 3. Set up paint stations with various colors. 4. Demonstrate brush techniques but encourage experimentation. 5. Let children paint freely on any section. 6. Encourage them to add to others' work (collaborative). 7. Play music while painting. 8. Step back periodically to view the whole. 9. When complete, display prominently. 10. Have a 'gallery opening' celebration. 11. Document with photos.",
+                    "duration_minutes": duration
+                }
+            ]
+        },
+        "cardboard_boxes": {
+            "matches": ["cardboard", "box", "boxes"],
+            "activities": [
+                {
+                    "title": "Cardboard Construction Challenge",
+                    "description": "Children use cardboard boxes and tape to build structures, vehicles, or creatures. This engineering activity develops spatial reasoning and problem-solving. The open-ended nature allows for creativity while the material constraints encourage innovative thinking. From simple houses to complex vehicles, the possibilities are endless.",
+                    "supplies_needed": ["cardboard boxes of various sizes", "masking tape or duct tape", "scissors (safety or regular)", "optional: markers for decorating"],
+                    "instructions": "1. Present challenge: 'Build a...' (vehicle, house for a stuffed animal, castle, robot). 2. Show children the available boxes and tape. 3. Demonstrate cutting and taping techniques. 4. Let children plan and then build. 5. Circulate to offer help and ask about their designs. 6. Test the creations (do they fit the stuffed animal? can they roll?). 7. Gallery walk to see everyone's work. 8. Optional: Use creations for dramatic play. 9. Photograph the constructions. 10. Discuss what was easy and what was challenging.",
+                    "duration_minutes": duration
+                }
+            ]
+        }
                 }
             ]
         }
@@ -1122,16 +1161,26 @@ def generate_from_supplies_tool(
                         matched_activities.append(activity)
                 break
     
-    # Generic templates
+    # Generic templates with rich content
     generic = [
         {
-            "title": f"{supplies[0].title()} Challenge",
-            "description": f"Creative challenge using {', '.join(supplies[:3])}.",
-            "supplies_needed": supplies[:4],
-            "instructions": f"1. Present challenge. 2. Provide supplies. 3. Let children create. 4. Share results.",
+            "title": f"Creative {supplies[0].title()} Challenge",
+            "description": f"An open-ended creative challenge where children explore and experiment with {', '.join(supplies[:3])} and other provided materials. This activity encourages problem-solving, innovation, and artistic expression. Children will have the freedom to create something unique while developing fine motor skills and learning to work with the properties of different materials. Perfect for fostering independent thinking and creativity in {age_group}.",
+            "supplies_needed": supplies[:5],
+            "instructions": f"1. Gather all supplies: {', '.join(supplies[:4])}. 2. Present the open-ended challenge: 'What can you create using these materials?' 3. Allow children time to explore and experiment without specific instructions. 4. Encourage them to try different approaches and learn from what doesn't work. 5. As they create, ask questions about their process and decisions. 6. Provide additional materials if needed. 7. When creations are complete, have a sharing circle where each child presents their work. 8. Celebrate the variety of solutions and creative approaches. 9. Optional: Document creations with photos or have children draw/write about their process.",
             "duration_minutes": duration
         }
     ]
+    
+    # Add more generic templates for variety
+    if len(supplies) >= 2:
+        generic.append({
+            "title": f"{supplies[0].title()} and {supplies[1].title()} Mashup",
+            "description": f"Children combine {supplies[0]} and {supplies[1]} in unexpected ways to create something new. This experimental activity encourages creative thinking and material exploration. By combining familiar items in novel ways, children stretch their imagination and discover new possibilities. The open-ended nature allows for multiple 'correct' answers and celebrates divergent thinking.",
+            "supplies_needed": supplies[:4],
+            "instructions": f"1. Show children the {supplies[0]} and {supplies[1]}. 2. Challenge: 'What happens when we combine these?' 3. Demonstrate one example, then encourage experimentation. 4. Let children explore different combinations and uses. 5. Ask 'what if' questions to extend thinking. 6. Document interesting combinations through photos or drawings. 7. Discuss surprising discoveries as a group. 8. Create a 'combination gallery' of successful experiments.",
+            "duration_minutes": duration
+        })
     
     all_activities = matched_activities + generic
     selected = all_activities[:count]
