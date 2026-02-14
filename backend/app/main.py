@@ -811,47 +811,63 @@ async def search_activities_endpoint(
         # Build search query combining theme and filters
         search_query = request.query
         
-        # Get semantic matches from Pinecone
+        # Get semantic matches from Pinecone (just IDs)
         filter_dict = {"type": request.activity_type} if request.activity_type else None
         semantic_results = vector_store.search(
             query=search_query,
-            top_k=request.limit * 2,  # Get more for filtering
+            top_k=request.limit * 3,  # Get more for filtering
             filter_dict=filter_dict
         )
         
-        # Apply additional filters and format
+        # Fetch full activity data from SQLite using IDs from Pinecone
         activities = []
         for match in semantic_results:
-            metadata = match.get("metadata", {})
+            activity_id = match.get("id")
+            score = match.get("score")
             
-            # Filter by age group if specified
+            # Get full activity from SQLite
+            activity = memory_manager.get_activity(activity_id) if memory_manager else None
+            
+            if not activity:
+                # Fallback to Pinecone metadata if not in SQLite
+                metadata = match.get("metadata", {})
+                activity = {
+                    "id": activity_id,
+                    "title": metadata.get("title", "Untitled"),
+                    "description": metadata.get("description", ""),
+                    "activity_type": metadata.get("type", "Other"),
+                    "development_age_group": metadata.get("development_age_group", "6-12 years"),
+                    "supplies": metadata.get("supplies", ""),
+                    "duration_minutes": metadata.get("duration_minutes", 30),
+                    "indoor_outdoor": metadata.get("indoor_outdoor", "either"),
+                }
+            
+            # Apply additional filters
             if request.age_group:
-                activity_age = metadata.get("development_age_group", "")
+                activity_age = activity.get("development_age_group", "")
                 if request.age_group not in activity_age:
                     continue
             
-            # Filter by indoor/outdoor if specified
             if request.indoor_outdoor:
-                activity_io = metadata.get("indoor_outdoor", "either")
+                activity_io = activity.get("indoor_outdoor", "either")
                 if activity_io != request.indoor_outdoor and activity_io != "either":
                     continue
             
-            # Filter by duration if specified
             if request.max_duration:
-                duration = metadata.get("duration_minutes", 60)
+                duration = activity.get("duration_minutes", 60)
                 if duration > request.max_duration:
                     continue
             
             activities.append({
-                "id": match.get("id"),
-                "title": metadata.get("title", "Untitled"),
-                "description": metadata.get("description", ""),
-                "type": metadata.get("type", "Other"),
-                "development_age_group": metadata.get("development_age_group", "6-12 years"),
-                "supplies": metadata.get("supplies", ""),
-                "duration_minutes": metadata.get("duration_minutes"),
-                "indoor_outdoor": metadata.get("indoor_outdoor", "either"),
-                "score": match.get("score"),
+                "id": activity.get("id"),
+                "title": activity.get("title", "Untitled"),
+                "description": activity.get("description", ""),
+                "type": activity.get("activity_type", "Other"),
+                "development_age_group": activity.get("development_age_group", "6-12 years"),
+                "supplies": activity.get("supplies", ""),
+                "duration_minutes": activity.get("duration_minutes"),
+                "indoor_outdoor": activity.get("indoor_outdoor", "either"),
+                "score": score,
             })
             
             if len(activities) >= request.limit:
