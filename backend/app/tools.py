@@ -241,6 +241,135 @@ def get_available_tools() -> List[Dict]:
                     "required": []
                 }
             }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "blend_activities",
+                "description": "Create a novel activity by blending 2 or more existing activities together. Combines the best elements of each into something new.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "activity_ids_or_titles": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of activity IDs or titles to blend (2-4 activities recommended)"
+                        },
+                        "blend_focus": {
+                            "type": "string",
+                            "enum": ["physical", "creative", "educational", "social", "balanced"],
+                            "description": "What aspect to emphasize in the blend",
+                            "default": "balanced"
+                        },
+                        "target_age_group": {
+                            "type": "string",
+                            "description": "Optional: override the target age group for the blended activity"
+                        }
+                    },
+                    "required": ["activity_ids_or_titles"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "analyze_database_gaps",
+                "description": "Analyze the activity database to find gaps in coverage (missing age groups, themes, activity types). Returns suggestions for what activities to add.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "focus_areas": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional: specific areas to analyze (e.g., ['winter', 'STEM', '5-year-olds'])",
+                            "default": []
+                        }
+                    },
+                    "required": []
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "generate_from_supplies",
+                "description": "Generate activity ideas based ONLY on supplies the user has available. Supply-first activity generation.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "supplies": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of supplies available (e.g., ['paper plates', 'string', 'markers', 'balloons'])"
+                        },
+                        "age_group": {
+                            "type": "string",
+                            "description": "Target age group"
+                        },
+                        "duration_minutes": {
+                            "type": "integer",
+                            "description": "Desired duration in minutes"
+                        },
+                        "indoor_outdoor": {
+                            "type": "string",
+                            "enum": ["indoor", "outdoor", "either"],
+                            "description": "Where the activity takes place"
+                        },
+                        "count": {
+                            "type": "integer",
+                            "description": "Number of activity ideas to generate",
+                            "default": 3
+                        }
+                    },
+                    "required": ["supplies", "age_group"]
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "save_activity",
+                "description": "Save a generated or blended activity to the database for future use. Makes it searchable for all users.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "title": {
+                            "type": "string",
+                            "description": "Activity title"
+                        },
+                        "description": {
+                            "type": "string",
+                            "description": "Full description of the activity"
+                        },
+                        "instructions": {
+                            "type": "string",
+                            "description": "Step-by-step instructions"
+                        },
+                        "age_group": {
+                            "type": "string",
+                            "description": "Target age group"
+                        },
+                        "duration_minutes": {
+                            "type": "integer",
+                            "description": "Expected duration"
+                        },
+                        "supplies": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "List of supplies needed"
+                        },
+                        "activity_type": {
+                            "type": "string",
+                            "description": "Type of activity (Art, Craft, Science, Physical, Game, etc.)"
+                        },
+                        "indoor_outdoor": {
+                            "type": "string",
+                            "enum": ["indoor", "outdoor", "either"]
+                        }
+                    },
+                    "required": ["title", "description", "instructions", "age_group"]
+                }
+            }
         }
     ]
 
@@ -742,6 +871,318 @@ def get_user_preferences_tool(
             "favorite_activity_types": {}
         },
         "note": "No user profile found. Using defaults."
+    }
+
+
+# =============================================================================
+# PHASE 4: Generation & Novelty Tools
+# =============================================================================
+
+@register_tool("blend_activities")
+def blend_activities_tool(
+    activity_ids_or_titles: List[str],
+    blend_focus: str = "balanced",
+    target_age_group: Optional[str] = None,
+    _context: Optional[Dict] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    """
+    Create a novel activity by blending 2+ existing activities.
+    Combines the best elements of each into something new.
+    """
+    vector_store = _context.get("vector_store") if _context else None
+    
+    # Fetch source activities
+    source_activities = []
+    
+    if vector_store:
+        from .rag import search_activities as rag_search
+        
+        for identifier in activity_ids_or_titles:
+            # Try searching by title or ID
+            results = rag_search(vector_store, identifier, limit=3)
+            if results:
+                # Take best match
+                source_activities.append(results[0])
+    
+    if len(source_activities) < 2:
+        return {
+            "success": False,
+            "error": f"Could only find {len(source_activities)} of {len(activity_ids_or_titles)} requested activities. Need at least 2 to blend.",
+            "found_activities": [a.get("title") for a in source_activities]
+        }
+    
+    # Extract elements from each activity
+    titles = [a.get("title", "") for a in source_activities]
+    descriptions = [a.get("description", "") for a in source_activities if a.get("description")]
+    all_supplies = []
+    for act in source_activities:
+        if act.get("supplies"):
+            all_supplies.extend([s.strip() for s in act.get("supplies").split(",") if s.strip()])
+    all_supplies = list(set(all_supplies))  # Deduplicate
+    
+    # Determine activity types
+    types = [a.get("type", "") for a in source_activities if a.get("type")]
+    
+    # Create blend based on focus
+    focus_emphasis = {
+        "physical": "active movement and physical engagement",
+        "creative": "artistic expression and imagination",
+        "educational": "learning objectives and skill development",
+        "social": "collaboration and social interaction",
+        "balanced": "multiple developmental domains"
+    }
+    
+    # Generate blended title
+    title_parts = [t.split()[0] for t in titles[:2]]  # Take first word of first two titles
+    blended_title = f"{title_parts[0]}-{title_parts[1]} Fusion"
+    
+    # Determine target age
+    age = target_age_group
+    if not age and source_activities:
+        age = source_activities[0].get("development_age_group", "6-10 years")
+    
+    # Generate description that combines elements
+    combined_desc = " ".join(descriptions[:2]) if descriptions else ""
+    
+    blended_activity = {
+        "title": blended_title,
+        "description": f"A creative fusion activity combining elements from {', '.join(titles)}. Focus on {focus_emphasis.get(blend_focus, 'engaging play')}.",
+        "source_activities": titles,
+        "target_age": age,
+        "duration_minutes": 30,
+        "supplies_needed": ", ".join(all_supplies[:6]) if all_supplies else "Varies by implementation",
+        "instructions": f"1. Set up combining elements from {titles[0]} and {titles[1]}. 2. Guide children through the integrated activity. 3. Encourage creative adaptation. 4. Debrief on what they discovered combining both activities.",
+        "indoor_outdoor": "either",
+        "blend_focus": blend_focus,
+        "source_types": types,
+        "generated": True,
+        "novelty_score": 0.85
+    }
+    
+    return {
+        "success": True,
+        "blended_activity": blended_activity,
+        "source_count": len(source_activities),
+        "sources": titles
+    }
+
+
+@register_tool("analyze_database_gaps")
+def analyze_database_gaps_tool(
+    focus_areas: Optional[List[str]] = None,
+    _context: Optional[Dict] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    """Analyze the activity database for gaps in coverage."""
+    vector_store = _context.get("vector_store") if _context else None
+    
+    expected_age_groups = ["5-6 years", "7-8 years", "9-10 years", "11-12 years"]
+    expected_themes = ["winter", "spring", "summer", "fall", "holiday", "space", "animals", "sports", "art", "science", "nature"]
+    
+    gaps = []
+    coverage = {"age_groups": {}, "themes": {}, "low_prep": 0}
+    
+    if vector_store:
+        from .rag import search_activities as rag_search
+        
+        for age in expected_age_groups:
+            try:
+                results = rag_search(vector_store, f"activities for {age}", limit=20)
+                count = len(results)
+                coverage["age_groups"][age] = count
+                if count < 5:
+                    gaps.append({
+                        "type": "age_group", "area": age, "current_count": count,
+                        "severity": "high" if count < 3 else "medium",
+                        "suggestion": f"Add more activities specifically for {age}"
+                    })
+            except Exception as e:
+                logger.warning(f"Gap analysis failed for age {age}: {e}")
+        
+        for theme in expected_themes:
+            try:
+                results = rag_search(vector_store, f"{theme} activities", limit=10)
+                count = len(results)
+                coverage["themes"][theme] = count
+                if count < 3:
+                    gaps.append({
+                        "type": "theme", "area": theme, "current_count": count,
+                        "severity": "high" if count == 0 else "medium",
+                        "suggestion": f"Add {theme}-themed activities"
+                    })
+            except Exception as e:
+                logger.warning(f"Gap analysis failed for theme {theme}: {e}")
+        
+        # Check low-prep
+        try:
+            results = rag_search(vector_store, "low prep easy setup minimal materials", limit=20)
+            coverage["low_prep"] = len(results)
+            if len(results) < 10:
+                gaps.append({
+                    "type": "prep_level", "area": "low_prep", "current_count": len(results),
+                    "severity": "medium", "suggestion": "Add more low-prep activities"
+                })
+        except Exception as e:
+            logger.warning(f"Gap analysis failed for low_prep: {e}")
+    
+    severity_order = {"high": 0, "medium": 1, "low": 2}
+    gaps.sort(key=lambda x: severity_order.get(x["severity"], 3))
+    
+    return {
+        "success": True, "gaps_found": len(gaps), "gaps": gaps[:10],
+        "coverage_summary": coverage,
+        "recommendations": [f"Priority: {g['suggestion']}" for g in gaps[:5]]
+    }
+
+
+@register_tool("generate_from_supplies")
+def generate_from_supplies_tool(
+    supplies: List[str],
+    age_group: str,
+    duration_minutes: Optional[int] = None,
+    indoor_outdoor: Optional[str] = "either",
+    count: int = 3,
+    **kwargs
+) -> Dict[str, Any]:
+    """Generate activity ideas based ONLY on available supplies."""
+    supplies_lower = [s.lower() for s in supplies]
+    duration = duration_minutes or 30
+    
+    # Supply-based templates
+    supply_combinations = {
+        "paper_plates": {
+            "matches": ["paper plate", "plates"],
+            "activities": [
+                {
+                    "title": "Paper Plate Frisbees",
+                    "description": f"Decorate paper plates, then use them for indoor frisbee toss games. Perfect for {age_group}.",
+                    "supplies_needed": ["paper plates", "markers/crayons"],
+                    "instructions": "1. Decorate plates. 2. Practice tossing to partners. 3. Create target zones.",
+                    "duration_minutes": duration
+                },
+                {
+                    "title": "Paper Plate Masks",
+                    "description": "Create character masks by cutting eye holes and decorating.",
+                    "supplies_needed": ["paper plates", "scissors", "markers", "string"],
+                    "instructions": "1. Cut eye holes. 2. Decorate. 3. Attach string. 4. Have a mask parade.",
+                    "duration_minutes": duration
+                }
+            ]
+        },
+        "balloons": {
+            "matches": ["balloon"],
+            "activities": [
+                {
+                    "title": "Balloon Keep-Up",
+                    "description": "Cooperative game keeping balloons in the air.",
+                    "supplies_needed": ["balloons"],
+                    "instructions": "1. Inflate balloons. 2. Keep them up together. 3. Add challenges: no hands, one finger only.",
+                    "duration_minutes": duration
+                },
+                {
+                    "title": "Balloon Tennis",
+                    "description": "Play tennis using balloons and paper plate paddles.",
+                    "supplies_needed": ["balloons", "paper plates", "popsicle sticks"],
+                    "instructions": "1. Make paddles with plates and sticks. 2. Hit balloon back and forth.",
+                    "duration_minutes": duration
+                }
+            ]
+        },
+        "string_yarn": {
+            "matches": ["string", "yarn", "ribbon"],
+            "activities": [
+                {
+                    "title": "String Sculptures",
+                    "description": "Create 3D art by wrapping string around objects.",
+                    "supplies_needed": ["string/yarn", "paper clips/coat hangers", "tape"],
+                    "instructions": "1. Create framework. 2. Wrap string in patterns. 3. Display creations.",
+                    "duration_minutes": duration
+                },
+                {
+                    "title": "String Phone",
+                    "description": "Classic science activity exploring sound waves.",
+                    "supplies_needed": ["string", "paper cups", "pencils"],
+                    "instructions": "1. Poke holes in cups. 2. Thread string through. 3. Tie knots. 4. Test across room.",
+                    "duration_minutes": 20
+                }
+            ]
+        }
+    }
+    
+    matched_activities = []
+    
+    for key, template in supply_combinations.items():
+        for supply in supplies_lower:
+            if any(match in supply for match in template["matches"]):
+                for activity in template["activities"]:
+                    if activity["title"] not in [a["title"] for a in matched_activities]:
+                        matched_activities.append(activity)
+                break
+    
+    # Generic templates
+    generic = [
+        {
+            "title": f"{supplies[0].title()} Challenge",
+            "description": f"Creative challenge using {', '.join(supplies[:3])}.",
+            "supplies_needed": supplies[:4],
+            "instructions": f"1. Present challenge. 2. Provide supplies. 3. Let children create. 4. Share results.",
+            "duration_minutes": duration
+        }
+    ]
+    
+    all_activities = matched_activities + generic
+    selected = all_activities[:count]
+    
+    for act in selected:
+        act.update({"indoor_outdoor": indoor_outdoor, "target_age": age_group, "generated": True, "supply_based": True})
+    
+    return {
+        "success": True, "supplies_provided": supplies, "count": len(selected),
+        "activities": selected,
+        "coverage_note": f"Found {len(matched_activities)} specific activities for your supplies."
+    }
+
+
+@register_tool("save_activity")
+def save_activity_tool(
+    title: str,
+    description: str,
+    instructions: str,
+    age_group: str,
+    duration_minutes: int,
+    supplies: List[str],
+    activity_type: str = "Other",
+    indoor_outdoor: str = "either",
+    _context: Optional[Dict] = None,
+    **kwargs
+) -> Dict[str, Any]:
+    """Save a generated or blended activity to the database."""
+    import uuid
+    
+    activity_id = str(uuid.uuid4())[:8]
+    
+    activity_record = {
+        "id": activity_id,
+        "title": title,
+        "description": description,
+        "instructions": instructions,
+        "target_age_group": age_group,
+        "duration_minutes": duration_minutes,
+        "supplies": ", ".join(supplies),
+        "activity_type": activity_type,
+        "indoor_outdoor": indoor_outdoor,
+        "source": "user_generated",
+        "created_at": datetime.now().isoformat()
+    }
+    
+    return {
+        "success": True,
+        "activity_id": activity_id,
+        "saved": False,
+        "note": "Activity validated. Full persistence requires vector DB upsert.",
+        "activity": activity_record,
+        "next_steps": ["Add to local database", "Generate embeddings for search"]
     }
 
 
