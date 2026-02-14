@@ -150,7 +150,10 @@ export function GeneratedActivityCard({
 
       {/* Expanded details */}
       {isExpanded && (
-        <CardContent className="pt-0 space-y-4 border-t bg-muted/30" onClick={(e) => e.stopPropagation()}>
+        <CardContent 
+          className="pt-0 space-y-4 border-t bg-muted/30 max-h-[500px] overflow-y-auto" 
+          onClick={(e) => e.stopPropagation()}
+        >
           {/* Full description */}
           {activity.description && (
             <div className="pt-2">
@@ -160,25 +163,41 @@ export function GeneratedActivityCard({
 
           {/* Supplies */}
           {activity.supplies && (
-            <div className="space-y-1">
+            <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm font-medium">
                 <Package className="w-4 h-4 text-primary" />
                 Supplies Needed
               </div>
-              <p className="text-sm text-muted-foreground pl-6">{activity.supplies}</p>
+              <ul className="text-sm text-muted-foreground pl-6 space-y-1 list-disc list-outside">
+                {activity.supplies
+                  .split(/[,;]/)
+                  .map(s => s.trim())
+                  .filter(s => s.length > 0)
+                  .map((supply, index) => (
+                    <li key={index} className="pl-1">{supply}</li>
+                  ))}
+              </ul>
             </div>
           )}
 
           {/* Instructions */}
           {activity.instructions && (
-            <div className="space-y-1">
+            <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm font-medium">
                 <Lightbulb className="w-4 h-4 text-primary" />
                 Instructions
               </div>
-              <p className="text-sm text-muted-foreground pl-6 whitespace-pre-wrap">
-                {activity.instructions}
-              </p>
+              <ol className="text-sm text-muted-foreground pl-6 space-y-2 list-decimal list-outside">
+                {activity.instructions
+                  .split(/\d+\./)
+                  .map(step => step.trim())
+                  .filter(step => step.length > 0)
+                  .map((step, index) => (
+                    <li key={index} className="pl-1 leading-relaxed">
+                      {step.replace(/\.$/, '')}
+                    </li>
+                  ))}
+              </ol>
             </div>
           )}
 
