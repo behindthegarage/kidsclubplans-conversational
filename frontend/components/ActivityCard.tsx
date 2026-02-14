@@ -15,6 +15,7 @@ interface ActivityCardProps {
   onSwap?: (activity: Activity) => void;
   onViewDetails?: (activity: Activity) => void;
   compact?: boolean;
+  defaultOpen?: boolean;
 }
 
 export function ActivityCard({ 
@@ -22,9 +23,10 @@ export function ActivityCard({
   onAddToSchedule, 
   onSwap, 
   onViewDetails,
-  compact = false 
+  compact = false,
+  defaultOpen = false
 }: ActivityCardProps) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(defaultOpen);
   const [isAdding, setIsAdding] = useState(false);
 
   const handleAddToSchedule = () => {

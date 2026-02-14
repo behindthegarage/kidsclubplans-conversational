@@ -19,11 +19,11 @@ export function MessageBubble({ message, onSaveActivity, onBlendActivity }: Mess
 
   // Separate generated activities from regular ones
   const regularActivities = message.activities?.filter(
-    a => a.source !== 'generated' && a.source !== 'user_generated' && a.source !== 'blended'
+    a => a.source !== 'generated' && a.source !== 'user_generated' && a.source !== 'blended' && !a.generated
   ) || [];
   
   const generatedActivities = message.activities?.filter(
-    a => a.source === 'generated' || a.source === 'user_generated' || a.source === 'blended'
+    a => a.source === 'generated' || a.source === 'user_generated' || a.source === 'blended' || a.generated
   ) || [];
 
   return (
