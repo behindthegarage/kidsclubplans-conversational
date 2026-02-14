@@ -6,6 +6,7 @@ FastAPI app with streaming chat via Server-Sent Events
 import json
 import logging
 import os
+import sqlite3
 import time
 import uuid
 from contextlib import asynccontextmanager
@@ -21,7 +22,14 @@ from .chat import ChatRequest as EngineChatRequest
 from .chat import Message as EngineMessage
 from .chat import chat_endpoint
 from .memory import MemoryManager
-from .models import UserProfile, UserProfileUpdate
+from .models import (
+    UserProfile,
+    UserProfileUpdate,
+    Schedule,
+    ScheduleCreateRequest,
+    WeatherRequest,
+    ScheduleGenerateRequest
+)
 from .observability import (
     classify_error,
     configure_logging,
@@ -367,3 +375,264 @@ async def get_user_conversations(http_request: Request, limit: int = 20):
     trusted_user_id, _ = _get_or_create_session_user_id(http_request)
     history = memory_manager.get_conversation_history(trusted_user_id, limit=limit)
     return {"conversations": history}
+
+
+# =============================================================================
+# Phase 3: Tools & Actions Endpoints
+# =============================================================================
+
+@app.post("/api/weather")
+async def get_weather(request: WeatherRequest):
+    """Get weather forecast for a location."""
+    try:
+        from .weather import check_weather
+        import asyncio
+        
+        result = asyncio.run(check_weather(request.location, request.date))
+        return result
+    except Exception as e:
+        logger.error(f"Weather API error: {e}")
+        raise HTTPException(status_code=500, detail=f"Weather service error: {str(e)}")
+
+
+@app.post("/api/schedule/generate")
+async def generate_schedule_endpoint(request: ScheduleGenerateRequest, http_request: Request):
+    """Generate a schedule with activities."""
+    if not memory_manager:
+        raise HTTPException(status_code=503, detail="Memory manager not initialized")
+    
+    trusted_user_id, _ = _get_or_create_session_user_id(http_request)
+    
+    # Get weather if requested
+    weather_data = None
+    if request.include_weather and vector_store:
+        try:
+            from .weather import check_weather
+            import asyncio
+            weather_data = asyncio.run(check_weather(request.location, request.date))
+        except Exception as e:
+            logger.warning(f"Could not fetch weather: {e}")
+    
+    # Get user profile for personalization
+    profile = memory_manager.get_profile(trusted_user_id)
+    preferences = request.preferences or {}
+    
+    if profile:
+        # Merge profile preferences
+        if profile.prefers_low_prep and "low_prep" not in preferences:
+            preferences["low_prep"] = True
+        if profile.default_age_group and not request.age_group:
+            request.age_group = profile.default_age_group
+    
+    # Generate schedule template
+    schedule = generate_schedule_template(
+        date=request.date,
+        age_group=request.age_group,
+        duration_hours=request.duration_hours,
+        preferences=preferences,
+        weather=weather_data
+    )
+    
+    log_event(
+        logger,
+        logging.INFO,
+        "schedule_generated",
+        user_id=trusted_user_id,
+        date=request.date,
+        activity_count=len(schedule.get("activities", []))
+    )
+    
+    return schedule
+
+
+@app.post("/api/schedule/save")
+async def save_schedule(request: ScheduleCreateRequest, http_request: Request):
+    """Save a generated schedule."""
+    if not memory_manager:
+        raise HTTPException(status_code=503, detail="Memory manager not initialized")
+    
+    trusted_user_id, _ = _get_or_create_session_user_id(http_request)
+    
+    # Generate unique ID
+    import uuid
+    schedule_id = str(uuid.uuid4())
+    
+    # Save to database via memory manager
+    schedule = Schedule(
+        id=schedule_id,
+        user_id=trusted_user_id,
+        date=request.date,
+        title=request.title,
+        age_group=request.age_group,
+        duration_hours=request.duration_hours,
+        activities=request.activities
+    )
+    
+    # Save to SQLite
+    with sqlite3.connect(memory_manager.db_path) as conn:
+        conn.execute(
+            """INSERT INTO schedules 
+               (id, user_id, date, title, age_group, duration_hours, activities, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (
+                schedule.id,
+                schedule.user_id,
+                schedule.date,
+                schedule.title,
+                schedule.age_group,
+                schedule.duration_hours,
+                json.dumps([a.model_dump() for a in schedule.activities]),
+                schedule.created_at
+            )
+        )
+        conn.commit()
+    
+    log_event(
+        logger,
+        logging.INFO,
+        "schedule_saved",
+        user_id=trusted_user_id,
+        schedule_id=schedule_id
+    )
+    
+    return {"id": schedule_id, "status": "saved"}
+
+
+@app.get("/api/schedule/{schedule_id}")
+async def get_schedule(schedule_id: str, http_request: Request):
+    """Get a saved schedule by ID."""
+    if not memory_manager:
+        raise HTTPException(status_code=503, detail="Memory manager not initialized")
+    
+    trusted_user_id, _ = _get_or_create_session_user_id(http_request)
+    
+    with sqlite3.connect(memory_manager.db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM schedules WHERE id = ? AND user_id = ?",
+            (schedule_id, trusted_user_id)
+        ).fetchone()
+        
+        if not row:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+        
+        activities = json.loads(row["activities"])
+        return {
+            "id": row["id"],
+            "date": row["date"],
+            "title": row["title"],
+            "age_group": row["age_group"],
+            "duration_hours": row["duration_hours"],
+            "activities": activities,
+            "created_at": row["created_at"]
+        }
+
+
+def generate_schedule_template(
+    date: str,
+    age_group: str,
+    duration_hours: int,
+    preferences: dict,
+    weather: dict = None
+) -> dict:
+    """Generate a schedule template with time slots."""
+    from datetime import datetime, timedelta
+    
+    # Parse preferences
+    start_time_str = preferences.get("start_time", "9:00 AM")
+    include_breaks = preferences.get("include_breaks", True)
+    
+    try:
+        start = datetime.strptime(start_time_str, "%I:%M %p")
+    except:
+        start = datetime.strptime("9:00", "%H:%M")
+    
+    # Generate time slots
+    slots = []
+    current_time = start
+    end_time = start + timedelta(hours=duration_hours)
+    
+    # Determine if outdoor is suitable
+    outdoor_ok = True
+    if weather:
+        outdoor_ok = weather.get("outdoor_suitable", True)
+    
+    # Activity durations based on age group
+    if "5" in age_group or "6" in age_group:
+        activity_duration = 20  # Younger kids = shorter activities
+    elif "7" in age_group or "8" in age_group:
+        activity_duration = 30
+    else:
+        activity_duration = 45
+    
+    activity_count = 0
+    while current_time < end_time:
+        time_str = current_time.strftime("%I:%M %p")
+        
+        # Add break every 3 activities
+        if include_breaks and activity_count > 0 and activity_count % 3 == 0:
+            slots.append({
+                "time": time_str,
+                "type": "break",
+                "duration_minutes": 15,
+                "title": "Break/Snack",
+                "description": "Transition and refreshment break"
+            })
+            current_time += timedelta(minutes=15)
+            continue
+        
+        # Determine indoor/outdoor recommendation
+        if outdoor_ok and activity_count % 2 == 0:
+            location_rec = "outdoor"
+        else:
+            location_rec = "indoor"
+        
+        slots.append({
+            "time": time_str,
+            "type": "activity",
+            "duration_minutes": activity_duration,
+            "title": None,  # To be filled
+            "description": None,
+            "indoor_outdoor": location_rec,
+            "needs_activity": True
+        })
+        
+        current_time += timedelta(minutes=activity_duration)
+        activity_count += 1
+    
+    return {
+        "date": date,
+        "age_group": age_group,
+        "duration_hours": duration_hours,
+        "weather": weather,
+        "outdoor_suitable": outdoor_ok,
+        "preferences": preferences,
+        "template": slots,
+        "note": "Schedule template created. Use the chat to fill activities for each slot."
+    }
+
+
+# Initialize schedules table on startup
+@lifespan(app)
+async def init_schedules_table():
+    """Initialize schedules table in database."""
+    if memory_manager:
+        with sqlite3.connect(memory_manager.db_path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS schedules (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    title TEXT,
+                    age_group TEXT,
+                    duration_hours INTEGER,
+                    activities TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES user_profiles(user_id)
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_schedules_user_date 
+                ON schedules(user_id, date)
+            """)
+            conn.commit()

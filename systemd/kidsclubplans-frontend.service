@@ -1,0 +1,17 @@
+[Unit]
+Description=KidsClubPlans Frontend (Next.js)
+After=network.target
+
+[Service]
+Type=simple
+User=openclaw
+WorkingDirectory=/var/www/chat.kidsclubplans.app
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=NEXT_PUBLIC_API_URL=https://chat.kidsclubplans.app
+
+[Install]
+WantedBy=multi-user.target

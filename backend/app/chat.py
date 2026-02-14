@@ -1,9 +1,7 @@
-"""
-Chat endpoint with streaming responses and function calling.
-"""
+"""Chat endpoint with streaming responses and function calling."""
 
 from pydantic import BaseModel
-from typing import List, Dict, Optional, AsyncGenerator
+from typing import List, Dict, Optional, AsyncGenerator, Any
 import json
 import logging
 import os
@@ -26,6 +24,7 @@ except ImportError:
 from app.observability import classify_error, log_event, metrics
 from app.rag import search_activities
 from app.safety import check_input_safety
+from app.tools import get_available_tools, execute_tool
 
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
 LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "2"))
@@ -53,7 +52,7 @@ class ChatRequest(BaseModel):
     stream: bool = True
 
 
-def get_system_prompt(user_context: Dict = None) -> str:
+def get_system_prompt(user_context: Dict = None, enable_tools: bool = True) -> str:
     """Build the system prompt with domain knowledge about child care."""
     base_prompt = """You are an expert activity planning assistant for child care programs.
 You help directors and staff plan engaging, age-appropriate activities.
@@ -70,9 +69,18 @@ When planning:
 - Balance active/calm, indoor/outdoor, structured/free play
 - Account for transitions and cleanup time
 - Suggest supply lists and preparation steps
-- Remember user preferences from past interactions
+- Remember user preferences from past interactions"""
 
-Always be helpful, specific, and practical. Child care staff are busy — give them actionable plans they can use immediately."""
+    if enable_tools:
+        base_prompt += """
+
+You have access to tools that help you plan:
+- search_activities: Find activities matching criteria
+- check_weather: Check if outdoor activities are suitable
+- generate_schedule: Create a structured daily schedule
+- get_user_preferences: Load user's saved preferences
+
+Use these tools proactively when they would help answer the user's request."""
 
     if user_context:
         base_prompt += f"\n\nUser context:\n{json.dumps(user_context, indent=2)}"
@@ -85,18 +93,17 @@ async def chat_endpoint(
     vector_store,
     memory_manager
 ) -> AsyncGenerator[str, None]:
-    """Main chat endpoint with SSE response stream."""
+    """Main chat endpoint with SSE response stream and function calling."""
 
     # Get user context from memory if available
     user_context = {}
     profile_context = ""
     if memory_manager:
         user_context = memory_manager.get_user_context(request.user_id)
-        # Get formatted profile context for prompt injection
         profile_context = memory_manager.get_user_context_for_prompt(request.user_id)
 
     # Build messages for LLM
-    system_content = get_system_prompt(user_context)
+    system_content = get_system_prompt(user_context, enable_tools=True)
     
     # Inject user profile context if available
     if profile_context:
@@ -145,19 +152,22 @@ async def chat_endpoint(
             log_event(logger, logging.WARNING, "rag_lookup_failed", error_type=error_type, error=str(e))
             yield f"data: {json.dumps({'type': 'error', 'data': {'message': f'RAG error: {str(e)}', 'error_type': error_type}})}\n\n"
 
-    # Stream model response
+    # Stream model response with function calling
     ai_provider = os.getenv("AI_PROVIDER", "openai").lower()
-    log_event(logger, logging.INFO, "llm_stream_start", provider=ai_provider)
+    log_event(logger, logging.INFO, "llm_stream_start", provider=ai_provider, function_calling=True)
 
+    # Get available tools
+    tools = get_available_tools()
+    
     if ai_provider == "anthropic" and ANTHROPIC_AVAILABLE:
         metrics.incr("llm_requests_total")
         metrics.incr("llm_requests_anthropic_total")
-        async for chunk in stream_anthropic(messages):
+        async for chunk in stream_anthropic(messages, tools=tools):
             yield chunk
     elif OPENAI_AVAILABLE:
         metrics.incr("llm_requests_total")
         metrics.incr("llm_requests_openai_total")
-        async for chunk in stream_openai(messages):
+        async for chunk in stream_openai_with_tools(messages, tools, vector_store):
             yield chunk
     else:
         metrics.incr("llm_not_configured_total")
@@ -165,7 +175,6 @@ async def chat_endpoint(
 
     # Save memory
     if memory_manager and last_user_message:
-        # Build a summary of what was returned
         response_summary = f"Retrieved {len(activity_context)} activities"
         if activity_context:
             activity_titles = [a.get('title', 'Unknown') for a in activity_context[:3]]
@@ -185,8 +194,12 @@ async def chat_endpoint(
     yield f"data: {json.dumps({'type': 'done', 'data': {'conversation_id': conv_id}})}\n\n"
 
 
-async def stream_openai(messages: List[Dict]) -> AsyncGenerator[str, None]:
-    """Stream response from OpenAI with timeout/retry hardening."""
+async def stream_openai_with_tools(
+    messages: List[Dict], 
+    tools: List[Dict],
+    vector_store: Any
+) -> AsyncGenerator[str, None]:
+    """Stream response from OpenAI with function calling support."""
     client = OpenAI(
         api_key=os.getenv("OPENAI_API_KEY"),
         timeout=LLM_TIMEOUT_SECONDS,
@@ -196,19 +209,124 @@ async def stream_openai(messages: List[Dict]) -> AsyncGenerator[str, None]:
     last_error = None
     for attempt in range(LLM_MAX_RETRIES + 1):
         try:
+            # First call - may include function calls
             response = client.chat.completions.create(
                 model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
                 messages=messages,
+                tools=tools,
+                tool_choice="auto",
                 stream=True,
                 temperature=0.7,
             )
 
+            function_calls = []
+            current_tool_call = None
+            
             for chunk in response:
-                content = chunk.choices[0].delta.content
-                if content:
-                    data = {"type": "content", "data": {"content": content}}
+                delta = chunk.choices[0].delta
+                
+                # Handle function call chunks
+                if delta.tool_calls:
+                    for tool_call in delta.tool_calls:
+                        if tool_call.id:
+                            # New tool call
+                            if current_tool_call and current_tool_call["id"] != tool_call.id:
+                                function_calls.append(current_tool_call)
+                            current_tool_call = {
+                                "id": tool_call.id,
+                                "type": "function",
+                                "function": {
+                                    "name": tool_call.function.name or "",
+                                    "arguments": tool_call.function.arguments or ""
+                                }
+                            }
+                        elif current_tool_call and tool_call.function.arguments:
+                            # Append to current tool call arguments
+                            current_tool_call["function"]["arguments"] += tool_call.function.arguments
+                
+                # Handle regular content
+                if delta.content:
+                    data = {"type": "content", "data": {"content": delta.content}}
                     yield f"data: {json.dumps(data)}\n\n"
                     await asyncio.sleep(0.01)
+            
+            # Add final tool call if exists
+            if current_tool_call:
+                function_calls.append(current_tool_call)
+            
+            # Execute function calls if any
+            if function_calls:
+                # Yield tool call notification
+                tool_names = [tc["function"]["name"] for tc in function_calls]
+                yield f"data: {json.dumps({'type': 'tool_calls', 'data': {'tools': tool_names}})}\n\n"
+                
+                # Execute tools and build results
+                tool_results = []
+                for tool_call in function_calls:
+                    tool_name = tool_call["function"]["name"]
+                    try:
+                        tool_args = json.loads(tool_call["function"]["arguments"])
+                    except json.JSONDecodeError:
+                        tool_args = {}
+                    
+                    # Execute the tool
+                    result = execute_tool(tool_name, tool_args)
+                    
+                    # Special handling for search_activities with vector_store
+                    if tool_name == "search_activities" and vector_store:
+                        activities = search_activities(
+                            vector_store, 
+                            tool_args.get("query", ""),
+                            limit=tool_args.get("limit", 5)
+                        )
+                        result = {
+                            "status": "success",
+                            "activities": activities,
+                            "count": len(activities)
+                        }
+                    
+                    tool_results.append({
+                        "tool_call_id": tool_call["id"],
+                        "role": "tool",
+                        "name": tool_name,
+                        "content": json.dumps(result)
+                    })
+                    
+                    # Yield activity results immediately
+                    if tool_name == "search_activities" and "activities" in result:
+                        for activity in result["activities"]:
+                            yield f"data: {json.dumps({'type': 'activity', 'data': activity})}\n\n"
+                
+                # Add assistant message with tool calls
+                messages.append({
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": function_calls
+                })
+                
+                # Add tool results
+                for result in tool_results:
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": result["tool_call_id"],
+                        "content": result["content"]
+                    })
+                
+                # Second call - get final response
+                final_response = client.chat.completions.create(
+                    model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+                    messages=messages,
+                    stream=True,
+                    temperature=0.7,
+                )
+                
+                for chunk in final_response:
+                    content = chunk.choices[0].delta.content
+                    if content:
+                        data = {"type": "content", "data": {"content": content}}
+                        yield f"data: {json.dumps(data)}\n\n"
+                        await asyncio.sleep(0.01)
+            
             return
 
         except Exception as e:
@@ -233,7 +351,10 @@ async def stream_openai(messages: List[Dict]) -> AsyncGenerator[str, None]:
     yield f"data: {json.dumps({'type': 'error', 'data': {'message': f'OpenAI failed after retries: {str(last_error)}', 'error_type': classify_error(last_error) if last_error else 'internal'}})}\n\n"
 
 
-async def stream_anthropic(messages: List[Dict]) -> AsyncGenerator[str, None]:
+async def stream_anthropic(
+    messages: List[Dict],
+    tools: Optional[List[Dict]] = None
+) -> AsyncGenerator[str, None]:
     """Stream response from Anthropic Claude with retry hardening."""
     client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
