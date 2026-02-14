@@ -20,6 +20,7 @@ export interface Activity {
   novelty_score?: number;
   target_age?: string;
   duration_minutes?: number;
+  indoor_outdoor?: string;
 }
 
 export interface ScheduleActivity {
@@ -347,6 +348,47 @@ export async function getSchedule(scheduleId: string): Promise<Schedule> {
       throw new Error('Schedule not found');
     }
     throw new Error(`Get schedule API error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+// Phase 4: Save Activity API
+
+export interface SaveActivityRequest {
+  title: string;
+  description: string;
+  instructions: string;
+  age_group: string;
+  duration_minutes: number;
+  supplies: string[];
+  activity_type?: string;
+  indoor_outdoor?: string;
+}
+
+export interface SaveActivityResponse {
+  success: boolean;
+  activity_id: string;
+  message: string;
+  searchable: boolean;
+}
+
+export async function saveActivity(
+  request: SaveActivityRequest
+): Promise<SaveActivityResponse> {
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+  const response = await fetch(`${apiUrl}/api/activities/save`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Save activity API error! status: ${response.status}`);
   }
 
   return response.json();

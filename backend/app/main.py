@@ -640,3 +640,66 @@ async def init_schedules_table():
                 ON schedules(user_id, date)
             """)
             conn.commit()
+
+
+# Phase 4: Save Activity endpoint
+class SaveActivityRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+    description: str = Field(..., min_length=1, max_length=2000)
+    instructions: str = Field(..., min_length=1, max_length=4000)
+    age_group: str = Field(..., min_length=1, max_length=50)
+    duration_minutes: int = Field(..., ge=5, le=300)
+    supplies: list[str] = Field(default_factory=list)
+    activity_type: str = Field(default="Other")
+    indoor_outdoor: str = Field(default="either")
+
+
+@app.post("/api/activities/save")
+async def save_activity_endpoint(
+    request: SaveActivityRequest,
+    http_request: Request
+):
+    """
+    Save a user-generated activity to the database.
+    Persists to both SQLite and Pinecone vector store.
+    """
+    if not memory_manager:
+        raise HTTPException(status_code=503, detail="Memory manager not initialized")
+    
+    trusted_user_id, _ = _get_or_create_session_user_id(http_request)
+    
+    # Import the save tool
+    from .tools import save_activity_tool
+    
+    # Prepare context
+    tool_context = {
+        "user_id": trusted_user_id,
+        "memory_manager": memory_manager,
+        "vector_store": vector_store
+    }
+    
+    # Call the save tool
+    result = save_activity_tool(
+        title=request.title,
+        description=request.description,
+        instructions=request.instructions,
+        age_group=request.age_group,
+        duration_minutes=request.duration_minutes,
+        supplies=request.supplies,
+        activity_type=request.activity_type,
+        indoor_outdoor=request.indoor_outdoor,
+        _context=tool_context
+    )
+    
+    if result.get("success"):
+        return {
+            "success": True,
+            "activity_id": result.get("activity_id"),
+            "message": "Activity saved successfully!",
+            "searchable": result.get("searchable", False)
+        }
+    else:
+        raise HTTPException(
+            status_code=500,
+            detail=result.get("note", "Failed to save activity")
+        )

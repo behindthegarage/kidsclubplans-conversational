@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Message, Activity, ToolCall, streamChatWithRetry } from '@/lib/api';
+import { Message, Activity, ToolCall, streamChatWithRetry, saveActivity } from '@/lib/api';
 import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
 import { Phase4ToolsPanel } from './Phase4ToolsPanel';
@@ -209,6 +209,23 @@ export function ChatInterface() {
     setShowTools(false);
   }, [handleSend]);
 
+  const handleSaveActivity = useCallback(async (activity: Activity) => {
+    try {
+      await saveActivity({
+        title: activity.title,
+        description: activity.description || '',
+        instructions: activity.instructions || '',
+        age_group: activity.target_age || activity.development_age_group || '6-10 years',
+        duration_minutes: activity.duration_minutes || 30,
+        supplies: activity.supplies ? activity.supplies.split(',').map((s: string) => s.trim()) : [],
+        activity_type: activity.type || 'Other',
+        indoor_outdoor: (activity as any).indoor_outdoor || 'either',
+      });
+    } catch (error) {
+      console.error('Failed to save activity:', error);
+    }
+  }, []);
+
   return (
     <div className="flex flex-col h-full bg-background">
       <header className="flex items-center justify-between px-4 py-3 border-b bg-card">
@@ -271,7 +288,11 @@ export function ChatInterface() {
       <ScrollArea className="flex-1 px-4" ref={scrollRef}>
         <div className="py-4 space-y-1">
           {messages.map((message) => (
-            <MessageBubble key={message.id} message={message} />
+            <MessageBubble 
+              key={message.id} 
+              message={message} 
+              onSaveActivity={handleSaveActivity}
+            />
           ))}
           <div ref={messagesEndRef} />
         </div>
