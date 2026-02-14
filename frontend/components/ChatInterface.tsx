@@ -1,15 +1,22 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
 import { Message, Activity, ToolCall, streamChatWithRetry, saveActivity, Schedule } from '@/lib/api';
 import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
 import { Phase4ToolsPanel } from './Phase4ToolsPanel';
 import { ScheduleManager } from './ScheduleManager';
+import { ThemeToggle } from './ThemeToggle';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
-import { Trash2, Sparkles, Wand2, X, LayoutGrid, CalendarDays, MessageSquare } from 'lucide-react';
+import { Trash2, Sparkles, Wand2, X, LayoutGrid, CalendarDays, MessageSquare, Menu } from 'lucide-react';
+import {
+  Sheet,
+  SheetContent,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 
 const WELCOME = `👋 Hi! I'm your KidsClubPlans assistant. I can help you:
 
@@ -43,6 +50,7 @@ export function ChatInterface() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeAbortRef = useRef<AbortController | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -252,20 +260,21 @@ export function ChatInterface() {
     <div className="flex flex-col h-full bg-background">
       <header className="flex items-center justify-between px-4 py-3 border-b bg-card">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
             <Sparkles className="w-4 h-4 text-primary-foreground" />
           </div>
-          <div>
+          <div className="hidden sm:block">
             <h1 className="font-semibold text-sm">KidsClubPlans Assistant</h1>
             <p className="text-xs text-muted-foreground">AI-powered activity planning</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Desktop Navigation */}
+        <div className="hidden md:flex items-center gap-2">
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => window.location.href = '/activities'}
+            onClick={() => router.push('/activities')}
           >
             <LayoutGrid className="w-4 h-4 mr-1" />
             Activities
@@ -273,7 +282,7 @@ export function ChatInterface() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => window.location.href = '/schedule'}
+            onClick={() => router.push('/schedule')}
           >
             <CalendarDays className="w-4 h-4 mr-1" />
             Schedule
@@ -302,6 +311,61 @@ export function ChatInterface() {
             <Trash2 className="w-4 h-4 mr-1" />
             Clear
           </Button>
+          <ThemeToggle />
+        </div>
+
+        {/* Mobile Navigation */}
+        <div className="flex md:hidden items-center gap-2">
+          <ThemeToggle />
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button variant="ghost" size="sm">
+                <Menu className="w-5 h-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-[200px]">
+              <div className="flex flex-col gap-2 mt-4">
+                <Button
+                  variant="ghost"
+                  className="justify-start"
+                  onClick={() => router.push('/activities')}
+                >
+                  <LayoutGrid className="w-4 h-4 mr-2" />
+                  Activities
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="justify-start"
+                  onClick={() => router.push('/schedule')}
+                >
+                  <CalendarDays className="w-4 h-4 mr-2" />
+                  Schedule
+                </Button>
+                <Button
+                  variant={showTools ? "default" : "ghost"}
+                  className="justify-start"
+                  onClick={() => setShowTools(!showTools)}
+                >
+                  <Wand2 className="w-4 h-4 mr-2" />
+                  {showTools ? 'Hide Tools' : 'Tools'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="justify-start"
+                  onClick={handleClear}
+                  disabled={isLoading}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Clear Chat
+                </Button>
+                {isLoading && (
+                  <Button variant="secondary" onClick={cancelCurrentStream}>
+                    Stop Generating
+                  </Button>
+                )}
+              </div>
+            </SheetContent>
+          </Sheet>
         </div>
       </header>
 
