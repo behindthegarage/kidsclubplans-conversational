@@ -95,6 +95,35 @@ class MemoryManager:
                 )
             """)
             
+            # Phase 4: User-generated activities table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS activities (
+                    id TEXT PRIMARY KEY,
+                    title TEXT NOT NULL,
+                    description TEXT,
+                    instructions TEXT,
+                    target_age_group TEXT,
+                    duration_minutes INTEGER,
+                    supplies TEXT,
+                    activity_type TEXT DEFAULT 'Other',
+                    indoor_outdoor TEXT DEFAULT 'either',
+                    source TEXT DEFAULT 'user_generated',
+                    created_by TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_activities_source 
+                ON activities(source)
+            """)
+            
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_activities_type 
+                ON activities(activity_type)
+            """)
+            
             conn.commit()
     
     def get_or_create_profile(self, user_id: str) -> UserProfile:
@@ -296,3 +325,102 @@ class MemoryManager:
                 "favorite_activity_types": profile.favorite_activity_types,
                 "preferences_set": bool(profile.default_age_group or profile.program_type)
             }
+
+    # =========================================================================
+    # Activity Management (Phase 4)
+    # =========================================================================
+    
+    def save_activity(self, activity: Dict, user_id: Optional[str] = None) -> bool:
+        """
+        Save a user-generated activity to the local database.
+        
+        Args:
+            activity: Activity dictionary with all fields
+            user_id: Optional user who created the activity
+            
+        Returns:
+            True if saved successfully
+        """
+        try:
+            now = datetime.now().isoformat()
+            
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("""
+                    INSERT OR REPLACE INTO activities (
+                        id, title, description, instructions, target_age_group,
+                        duration_minutes, supplies, activity_type, indoor_outdoor,
+                        source, created_by, created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    activity.get("id"),
+                    activity.get("title"),
+                    activity.get("description"),
+                    activity.get("instructions"),
+                    activity.get("target_age_group"),
+                    activity.get("duration_minutes"),
+                    activity.get("supplies"),
+                    activity.get("activity_type", "Other"),
+                    activity.get("indoor_outdoor", "either"),
+                    activity.get("source", "user_generated"),
+                    user_id,
+                    activity.get("created_at", now),
+                    now
+                ))
+            
+            return True
+            
+        except Exception as e:
+            print(f"Failed to save activity: {e}")
+            return False
+    
+    def get_activity(self, activity_id: str) -> Optional[Dict]:
+        """Get a specific activity by ID."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM activities WHERE id = ?",
+                (activity_id,)
+            ).fetchone()
+            
+            return dict(row) if row else None
+    
+    def list_activities(
+        self, 
+        source: Optional[str] = None,
+        activity_type: Optional[str] = None,
+        created_by: Optional[str] = None,
+        limit: int = 50
+    ) -> List[Dict]:
+        """List activities with optional filtering."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            
+            query = "SELECT * FROM activities WHERE 1=1"
+            params = []
+            
+            if source:
+                query += " AND source = ?"
+                params.append(source)
+            
+            if activity_type:
+                query += " AND activity_type = ?"
+                params.append(activity_type)
+            
+            if created_by:
+                query += " AND created_by = ?"
+                params.append(created_by)
+            
+            query += " ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
+            
+            rows = conn.execute(query, params).fetchall()
+            return [dict(row) for row in rows]
+    
+    def count_user_activities(self, user_id: str) -> int:
+        """Count activities created by a user."""
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM activities WHERE created_by = ?",
+                (user_id,)
+            ).fetchone()
+            return row[0] if row else 0

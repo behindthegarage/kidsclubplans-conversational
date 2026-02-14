@@ -1176,13 +1176,59 @@ def save_activity_tool(
         "created_at": datetime.now().isoformat()
     }
     
+    # Get context
+    memory_manager = _context.get("memory_manager") if _context else None
+    vector_store = _context.get("vector_store") if _context else None
+    user_id = _context.get("user_id") if _context else None
+    
+    results = {
+        "sqlite_saved": False,
+        "pinecone_saved": False
+    }
+    
+    # Save to SQLite
+    if memory_manager:
+        results["sqlite_saved"] = memory_manager.save_activity(activity_record, user_id)
+    
+    # Generate embedding and save to Pinecone
+    if vector_store:
+        # Create searchable text
+        searchable_text = f"{title}. {description}. {instructions}. Ages: {age_group}. Supplies: {', '.join(supplies)}."
+        
+        # Prepare metadata for Pinecone
+        metadata = {
+            "title": title,
+            "description": description[:500],  # Truncate for metadata
+            "type": activity_type,
+            "development_age_group": age_group,
+            "supplies": ", ".join(supplies),
+            "duration_minutes": duration_minutes,
+            "indoor_outdoor": indoor_outdoor,
+            "source": "user_generated",
+            "id": activity_id
+        }
+        
+        results["pinecone_saved"] = vector_store.upsert_activity(
+            activity_id, 
+            searchable_text, 
+            metadata
+        )
+    
+    # Determine overall success
+    fully_persisted = results["sqlite_saved"] and results["pinecone_saved"]
+    partially_persisted = results["sqlite_saved"] or results["pinecone_saved"]
+    
     return {
-        "success": True,
+        "success": partially_persisted,
+        "fully_persisted": fully_persisted,
         "activity_id": activity_id,
-        "saved": False,
-        "note": "Activity validated. Full persistence requires vector DB upsert.",
+        "saved_to": {
+            "sqlite": results["sqlite_saved"],
+            "pinecone": results["pinecone_saved"]
+        },
+        "note": "Activity saved!" if fully_persisted else "Activity partially saved (see details)",
         "activity": activity_record,
-        "next_steps": ["Add to local database", "Generate embeddings for search"]
+        "searchable": fully_persisted  # Now appears in searches
     }
 
 

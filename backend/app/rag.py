@@ -104,6 +104,42 @@ class VectorStore:
             print(f"Search error: {e}")
             return []
 
+    def upsert_activity(self, activity_id: str, text: str, metadata: Dict) -> bool:
+        """
+        Add or update an activity in the vector store.
+        
+        Args:
+            activity_id: Unique identifier for the activity
+            text: Text to embed (title + description + instructions)
+            metadata: Activity metadata (type, age_group, supplies, etc.)
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Generate embedding
+            embedding = self.get_embedding(text)
+            
+            if not embedding:
+                print(f"Failed to generate embedding for activity {activity_id}")
+                return False
+            
+            # Upsert to Pinecone
+            self.index.upsert(
+                vectors=[{
+                    "id": activity_id,
+                    "values": embedding,
+                    "metadata": metadata
+                }]
+            )
+            
+            print(f"✅ Activity {activity_id} upserted to Pinecone")
+            return True
+            
+        except Exception as e:
+            print(f"Upsert error: {e}")
+            return False
+
 
 def initialize_vector_store() -> Optional[VectorStore]:
     """
