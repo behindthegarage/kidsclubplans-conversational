@@ -139,6 +139,21 @@ export function WeeklyScheduler({ initialWeek = 1, onSave }: WeeklySchedulerProp
     }));
   };
 
+  const moveActivity = (fromDay: typeof DAYS[number], toDay: typeof DAYS[number], activityId: string) => {
+    if (fromDay === toDay) return;
+    
+    setSchedule(prev => {
+      const activity = prev[fromDay].find(a => a.id === activityId);
+      if (!activity) return prev;
+      
+      return {
+        ...prev,
+        [fromDay]: prev[fromDay].filter(a => a.id !== activityId),
+        [toDay]: [...prev[toDay], activity],
+      };
+    });
+  };
+
   const getAllSupplies = () => {
     const allSupplies: string[] = [];
     DAYS.forEach(day => {
@@ -233,6 +248,7 @@ export function WeeklyScheduler({ initialWeek = 1, onSave }: WeeklySchedulerProp
                 activities={schedule[day]}
                 onAddActivity={(activity) => addActivity(day, activity)}
                 onRemoveActivity={(id) => removeActivity(day, id)}
+                onMoveActivity={moveActivity}
               />
             ))}
           </div>
@@ -267,14 +283,15 @@ export function WeeklyScheduler({ initialWeek = 1, onSave }: WeeklySchedulerProp
 }
 
 interface DayColumnProps {
-  day: string;
+  day: typeof DAYS[number];
   label: string;
   activities: ScheduledActivity[];
   onAddActivity: (activity: Partial<ScheduledActivity>) => void;
   onRemoveActivity: (id: string) => void;
+  onMoveActivity: (fromDay: typeof DAYS[number], toDay: typeof DAYS[number], id: string) => void;
 }
 
-function DayColumn({ day, label, activities, onAddActivity, onRemoveActivity }: DayColumnProps) {
+function DayColumn({ day, label, activities, onAddActivity, onRemoveActivity, onMoveActivity }: DayColumnProps) {
   const [showAddForm, setShowAddForm] = useState(false);
 
   return (
@@ -283,7 +300,7 @@ function DayColumn({ day, label, activities, onAddActivity, onRemoveActivity }: 
         {label}
       </div>
       
-      <div className="flex-1 space-y-2 min-h-[400px]">
+      <div className="flex-1 space-y-2 min-h-[200px] lg:min-h-[400px]">
         {activities.map((activity) => (
           <Card key={activity.id} className="relative group">
             <CardContent className="p-3">
@@ -298,14 +315,32 @@ function DayColumn({ day, label, activities, onAddActivity, onRemoveActivity }: 
                     {activity.type}
                   </Badge>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="opacity-0 group-hover:opacity-100 h-6 w-6 p-0"
-                  onClick={() => onRemoveActivity(activity.id)}
-                >
-                  <Trash2 className="w-3 h-3 text-destructive" />
-                </Button>
+                <div className="flex flex-col gap-1">
+                  {/* Move dropdown */}
+                  <select
+                    className="text-xs px-1 py-0.5 border rounded bg-background opacity-0 group-hover:opacity-100 transition-opacity"
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        onMoveActivity(day, e.target.value as typeof DAYS[number], activity.id);
+                        e.target.value = '';
+                      }
+                    }}
+                  >
+                    <option value="">Move to...</option>
+                    {DAYS.filter(d => d !== day).map(d => (
+                      <option key={d} value={d}>{DAY_LABELS[d]}</option>
+                    ))}
+                  </select>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="opacity-0 group-hover:opacity-100 h-6 w-6 p-0"
+                    onClick={() => onRemoveActivity(activity.id)}
+                  >
+                    <Trash2 className="w-3 h-3 text-destructive" />
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
