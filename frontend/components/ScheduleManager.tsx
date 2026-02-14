@@ -26,6 +26,7 @@ import {
   Package,
   Copy,
   Download,
+  FilePlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -416,6 +417,59 @@ END:VEVENT
           </div>
         ) : (
           <ScrollArea className="flex-1 p-6 pt-2">
+            {/* Quick Templates */}
+            <div className="mb-4">
+              <p className="text-xs text-muted-foreground mb-2">Quick Templates</p>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => onSelectSchedule?.({
+                    id: 'template-full-day',
+                    date: new Date().toISOString().split('T')[0],
+                    age_group: '6-12 years',
+                    duration_hours: 8,
+                    activities: [
+                      { start_time: '7:00', end_time: '9:00', duration_minutes: 120, title: 'Before Care / Free Play' },
+                      { start_time: '9:00', end_time: '10:00', duration_minutes: 60, title: 'Morning Activity' },
+                      { start_time: '10:00', end_time: '10:15', duration_minutes: 15, title: 'Snack Break' },
+                      { start_time: '10:15', end_time: '11:30', duration_minutes: 75, title: 'Main Activity Block' },
+                      { start_time: '11:30', end_time: '12:30', duration_minutes: 60, title: 'Lunch' },
+                      { start_time: '12:30', end_time: '14:00', duration_minutes: 90, title: 'Quiet Time / Reading' },
+                      { start_time: '14:00', end_time: '15:00', duration_minutes: 60, title: 'Afternoon Activity' },
+                      { start_time: '15:00', end_time: '15:15', duration_minutes: 15, title: 'Snack Break' },
+                      { start_time: '15:15', end_time: '18:00', duration_minutes: 165, title: 'After Care / Free Play' },
+                    ]
+                  })}
+                >
+                  <FilePlus className="w-3 h-3 mr-1" />
+                  Full Day
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-xs"
+                  onClick={() => onSelectSchedule?.({
+                    id: 'template-half-day',
+                    date: new Date().toISOString().split('T')[0],
+                    age_group: '6-12 years',
+                    duration_hours: 4,
+                    activities: [
+                      { start_time: '9:00', end_time: '9:30', duration_minutes: 30, title: 'Arrival / Free Play' },
+                      { start_time: '9:30', end_time: '10:30', duration_minutes: 60, title: 'Morning Activity' },
+                      { start_time: '10:30', end_time: '10:45', duration_minutes: 15, title: 'Snack' },
+                      { start_time: '10:45', end_time: '11:45', duration_minutes: 60, title: 'Main Activity' },
+                      { start_time: '11:45', end_time: '12:00', duration_minutes: 15, title: 'Clean Up / Dismissal' },
+                    ]
+                  })}
+                >
+                  <FilePlus className="w-3 h-3 mr-1" />
+                  Half Day
+                </Button>
+              </div>
+            </div>
+
             {/* Search Bar */}
             <div className="mb-4">
               <Input
