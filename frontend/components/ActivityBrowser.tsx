@@ -448,11 +448,12 @@ export function ActivityBrowser({ onAddToSchedule, onAddToWeek, onAddMultipleToW
                           e.target.value = '';
                         }
                       }}
-                      className="text-sm px-2 py-1 border rounded"
+                      className="text-sm px-2 py-1 border rounded bg-background text-foreground"
+                      style={{ color: 'hsl(var(--foreground))' }}
                     >
-                      <option value="">Add to week...</option>
+                      <option value="" style={{ color: 'hsl(var(--foreground))' }}>Add to week...</option>
                       {[1, 2, 3, 4, 5, 6, 7, 8].map((w) => (
-                        <option key={w} value={w}>Week {w}</option>
+                        <option key={w} value={w} style={{ color: 'hsl(var(--foreground))' }}>Week {w}</option>
                       ))}
                     </select>
                   )}
