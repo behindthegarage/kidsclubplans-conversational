@@ -783,3 +783,94 @@ async def save_activity_endpoint(
             status_code=500,
             detail=result.get("note", "Failed to save activity")
         )
+
+
+# Phase 7: Voice Input (Whisper Integration)
+import subprocess
+import tempfile
+import shutil
+from fastapi import File, UploadFile
+
+@app.post("/api/transcribe")
+async def transcribe_audio(
+    audio: UploadFile = File(...),
+    http_request: Request
+):
+    """
+    Transcribe audio to text using Whisper.
+    Accepts common audio formats (mp3, m4a, wav, webm).
+    """
+    # Check whisper is available
+    if not shutil.which("whisper"):
+        raise HTTPException(
+            status_code=503,
+            detail="Voice transcription not available. Whisper not installed."
+        )
+    
+    # Validate file type
+    allowed_types = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/x-m4a', 'audio/webm', 'audio/ogg']
+    if audio.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported audio format: {audio.content_type}. Supported: {', '.join(allowed_types)}"
+        )
+    
+    # Save uploaded file to temp location
+    suffix = audio.filename.split('.')[-1] if '.' in audio.filename else 'webm'
+    with tempfile.NamedTemporaryFile(delete=False, suffix=f'.{suffix}') as tmp_input:
+        content = await audio.read()
+        tmp_input.write(content)
+        tmp_input_path = tmp_input.name
+    
+    try:
+        # Run whisper transcription
+        # Using base model for speed - can upgrade to medium for accuracy
+        result = subprocess.run(
+            ['whisper', tmp_input_path, '--model', 'base', '--output_format', 'txt', '--output_dir', '/tmp'],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+        
+        if result.returncode != 0:
+            logger.error(f"Whisper transcription failed: {result.stderr}")
+            raise HTTPException(
+                status_code=500,
+                detail="Transcription failed. Please try again."
+            )
+        
+        # Read transcribed text
+        output_path = tmp_input_path.replace(f'.{suffix}', '.txt')
+        with open(output_path, 'r') as f:
+            transcribed_text = f.read().strip()
+        
+        # Clean up temp files
+        os.unlink(tmp_input_path)
+        if os.path.exists(output_path):
+            os.unlink(output_path)
+        
+        log_event("voice_transcription", level="INFO", 
+                  request_id=request_id_ctx.get(),
+                  chars=len(transcribed_text))
+        
+        return {
+            "success": True,
+            "text": transcribed_text,
+            "source": "whisper"
+        }
+        
+    except subprocess.TimeoutExpired:
+        os.unlink(tmp_input_path)
+        raise HTTPException(
+            status_code=504,
+            detail="Transcription timed out. Please try a shorter recording."
+        )
+    except Exception as e:
+        # Clean up on error
+        if os.path.exists(tmp_input_path):
+            os.unlink(tmp_input_path)
+        logger.error(f"Transcription error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Transcription failed. Please try again."
+        )
