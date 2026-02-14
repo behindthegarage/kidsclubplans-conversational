@@ -85,7 +85,7 @@ When planning:
 - Suggest supply lists and preparation steps
 - Remember user preferences from their profile
 
-Always be helpful, specific, and practical. Child care staff are busy — give them actionable plans they can use immediately."""
+Always be helpful, specific, and practical. Child care staff are busy - give them actionable plans they can use immediately."""
 
     if user_context:
         base_prompt += f"\n\nUser context:\n{json.dumps(user_context, indent=2)}"
@@ -109,11 +109,11 @@ async def chat_endpoint(
 
     # Build messages for LLM
     system_content = get_system_prompt(user_context)
-    
+
     # Inject user profile context if available
     if profile_context:
         system_content += f"\n\n{profile_context}"
-    
+
     messages = [{"role": "system", "content": system_content}]
     for msg in request.messages:
         messages.append({"role": msg.role, "content": msg.content})
@@ -165,7 +165,7 @@ async def chat_endpoint(
     # Save memory
     if memory_manager and last_user_message:
         response_summary = "Chat response with tool calls"
-        
+
         memory_manager.add_interaction(
             user_id=request.user_id,
             query=last_user_message,
@@ -181,14 +181,14 @@ async def chat_endpoint(
 
 
 async def stream_openai_with_tools(
-    messages: List[Dict],
+    messages: List[Dict], 
     tools: List[Dict],
     tool_context: Dict,
-    max_iterations: int = 5
+    max_iterations: int = 10
 ) -> AsyncGenerator[str, None]:
     """
     Stream response from OpenAI with function calling support.
-    
+
     This handles the full conversation loop including tool execution.
     """
     client = OpenAI(
@@ -202,7 +202,7 @@ async def stream_openai_with_tools(
 
     while iteration < max_iterations:
         iteration += 1
-        
+
         try:
             response = client.chat.completions.create(
                 model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
@@ -311,7 +311,7 @@ async def stream_anthropic_with_tools(
     messages: List[Dict],
     tools: List[Dict],
     tool_context: Dict,
-    max_iterations: int = 5
+    max_iterations: int = 10
 ) -> AsyncGenerator[str, None]:
     """
     Stream response from Anthropic Claude with tool use support.
@@ -353,7 +353,7 @@ async def stream_anthropic_with_tools(
                 messages=claude_messages,
                 tools=anthropic_tools if anthropic_tools else None,
             ) as stream:
-                
+
                 content_buffer = ""
                 tool_use_blocks = []
                 current_block = None
@@ -377,7 +377,7 @@ async def stream_anthropic_with_tools(
                                 "name": event.content_block.name,
                                 "input": ""
                             }
-                    
+
                     elif event.type == "content_block_delta":
                         if event.delta.type == "input_json_delta":
                             if current_block:
@@ -396,7 +396,7 @@ async def stream_anthropic_with_tools(
             assistant_content = []
             if content_buffer:
                 assistant_content.append({"type": "text", "text": content_buffer})
-            
+
             for tool_use in tool_use_blocks:
                 assistant_content.append({
                     "type": "tool_use",
