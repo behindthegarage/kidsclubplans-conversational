@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import {
   Calendar,
   Clock,
@@ -36,17 +37,21 @@ interface ScheduleManagerProps {
 export function ScheduleManager({ onSelectSchedule, trigger }: ScheduleManagerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
+  const [filteredSchedules, setFilteredSchedules] = useState<Schedule[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [isDuplicating, setIsDuplicating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const loadSchedules = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await listSchedules(20, 0);
+      const response = await listSchedules(50, 0); // Load more for filtering
       setSchedules(response.schedules);
+      setFilteredSchedules(response.schedules);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load schedules');
     } finally {
@@ -59,6 +64,21 @@ export function ScheduleManager({ onSelectSchedule, trigger }: ScheduleManagerPr
       loadSchedules();
     }
   }, [isOpen]);
+
+  // Filter schedules based on search query
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredSchedules(schedules);
+      return;
+    }
+    
+    const query = searchQuery.toLowerCase();
+    const filtered = schedules.filter(s => 
+      (s.date && s.date.toLowerCase().includes(query)) ||
+      (s.age_group && s.age_group.toLowerCase().includes(query))
+    );
+    setFilteredSchedules(filtered);
+  }, [searchQuery, schedules]);
 
   const handleDelete = async (scheduleId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -133,8 +153,6 @@ export function ScheduleManager({ onSelectSchedule, trigger }: ScheduleManagerPr
     printWindow.document.close();
     setTimeout(() => printWindow.print(), 100);
   };
-
-  const [isDuplicating, setIsDuplicating] = useState(false);
 
   const handleDuplicate = async () => {
     if (!selectedSchedule) return;
@@ -398,21 +416,31 @@ END:VEVENT
           </div>
         ) : (
           <ScrollArea className="flex-1 p-6 pt-2">
+            {/* Search Bar */}
+            <div className="mb-4">
+              <Input
+                placeholder="Search by date or age group..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full"
+              />
+            </div>
+
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
               </div>
-            ) : schedules.length === 0 ? (
+            ) : filteredSchedules.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">
                 <CalendarDays className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                <p>No saved schedules yet</p>
+                <p>{searchQuery ? 'No schedules match your search' : 'No saved schedules yet'}</p>
                 <p className="text-sm mt-1">
-                  Generate and save a schedule to see it here
+                  {searchQuery ? 'Try a different search term' : 'Generate and save a schedule to see it here'}
                 </p>
               </div>
             ) : (
               <div className="space-y-2">
-                {schedules.map((schedule) => (
+                {filteredSchedules.map((schedule) => (
                   <div
                     key={schedule.id || Math.random()}
                     className="group flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
