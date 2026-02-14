@@ -946,6 +946,7 @@ def blend_activities_tool(
     combined_desc = " ".join(descriptions[:2]) if descriptions else ""
     
     blended_activity = {
+        "id": f"blend-{hash(blended_title) % 10000}",
         "title": blended_title,
         "description": f"A creative fusion activity combining elements from {', '.join(titles)}. Focus on {focus_emphasis.get(blend_focus, 'engaging play')}.",
         "source_activities": titles,
@@ -956,6 +957,7 @@ def blend_activities_tool(
         "indoor_outdoor": "either",
         "blend_focus": blend_focus,
         "source_types": types,
+        "source": "blended",
         "generated": True,
         "novelty_score": 0.85
     }
@@ -1135,7 +1137,14 @@ def generate_from_supplies_tool(
     selected = all_activities[:count]
     
     for act in selected:
-        act.update({"indoor_outdoor": indoor_outdoor, "target_age": age_group, "generated": True, "supply_based": True})
+        act.update({
+            "indoor_outdoor": indoor_outdoor,
+            "target_age": age_group,
+            "source": "generated",
+            "generated": True,
+            "supply_based": True,
+            "id": f"gen-{hash(act['title']) % 10000}"
+        })
     
     return {
         "success": True, "supplies_provided": supplies, "count": len(selected),
