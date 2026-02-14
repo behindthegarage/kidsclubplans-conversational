@@ -308,6 +308,35 @@ async def stream_openai_with_tools(
                 logger.info(f"Executing tool: {tool_name}")
                 result = execute_tool(tool_name, tool_args, tool_context)
 
+                # Check if result contains activities and emit them
+                if result.success and result.result:
+                    result_data = result.result
+                    
+                    # Handle activities from generate_from_supplies
+                    if tool_name == "generate_from_supplies" and "activities" in result_data:
+                        for activity in result_data["activities"]:
+                            activity_event = {
+                                "type": "activity",
+                                "data": activity
+                            }
+                            yield f"data: {json.dumps(activity_event)}\n\n"
+                    
+                    # Handle blended activity
+                    elif tool_name == "blend_activities" and "blended_activity" in result_data:
+                        activity_event = {
+                            "type": "activity", 
+                            "data": result_data["blended_activity"]
+                        }
+                        yield f"data: {json.dumps(activity_event)}\n\n"
+                    
+                    # Handle saved activity
+                    elif tool_name == "save_activity" and "activity" in result_data:
+                        activity_event = {
+                            "type": "activity",
+                            "data": result_data["activity"]
+                        }
+                        yield f"data: {json.dumps(activity_event)}\n\n"
+
                 # Add tool response to messages
                 tool_response = {
                     "role": "tool",
@@ -450,6 +479,35 @@ async def stream_anthropic_with_tools(
                 # Execute the tool
                 logger.info(f"Executing tool: {tool_name}")
                 result = execute_tool(tool_name, tool_args, tool_context)
+
+                # Check if result contains activities and emit them
+                if result.success and result.result:
+                    result_data = result.result
+                    
+                    # Handle activities from generate_from_supplies
+                    if tool_name == "generate_from_supplies" and "activities" in result_data:
+                        for activity in result_data["activities"]:
+                            activity_event = {
+                                "type": "activity",
+                                "data": activity
+                            }
+                            yield f"data: {json.dumps(activity_event)}\n\n"
+                    
+                    # Handle blended activity
+                    elif tool_name == "blend_activities" and "blended_activity" in result_data:
+                        activity_event = {
+                            "type": "activity", 
+                            "data": result_data["blended_activity"]
+                        }
+                        yield f"data: {json.dumps(activity_event)}\n\n"
+                    
+                    # Handle saved activity
+                    elif tool_name == "save_activity" and "activity" in result_data:
+                        activity_event = {
+                            "type": "activity",
+                            "data": result_data["activity"]
+                        }
+                        yield f"data: {json.dumps(activity_event)}\n\n"
 
                 tool_results.append({
                     "type": "tool_result",
