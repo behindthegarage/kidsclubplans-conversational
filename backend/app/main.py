@@ -386,9 +386,8 @@ async def get_weather(request: WeatherRequest):
     """Get weather forecast for a location."""
     try:
         from .weather import check_weather
-        import asyncio
         
-        result = asyncio.run(check_weather(request.location, request.date))
+        result = await check_weather(request.location, request.date)
         return result
     except Exception as e:
         logger.error(f"Weather API error: {e}")
@@ -405,11 +404,10 @@ async def generate_schedule_endpoint(request: ScheduleGenerateRequest, http_requ
     
     # Get weather if requested
     weather_data = None
-    if request.include_weather and vector_store:
+    if request.include_weather:
         try:
             from .weather import check_weather
-            import asyncio
-            weather_data = asyncio.run(check_weather(request.location, request.date))
+            weather_data = await check_weather(request.location, request.date)
         except Exception as e:
             logger.warning(f"Could not fetch weather: {e}")
     

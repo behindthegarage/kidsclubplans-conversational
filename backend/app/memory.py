@@ -64,6 +64,37 @@ class MemoryManager:
                 ON conversations(session_id)
             """)
             
+            # Phase 3: Schedules table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS schedules (
+                    id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    title TEXT,
+                    age_group TEXT,
+                    duration_hours INTEGER,
+                    activities TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES user_profiles(user_id)
+                )
+            """)
+            
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_schedules_user_date 
+                ON schedules(user_id, date)
+            """)
+            
+            # Phase 3: Weather cache table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS weather_cache (
+                    location TEXT NOT NULL,
+                    date TEXT NOT NULL,
+                    data TEXT NOT NULL,
+                    cached_at TEXT NOT NULL,
+                    PRIMARY KEY (location, date)
+                )
+            """)
+            
             conn.commit()
     
     def get_or_create_profile(self, user_id: str) -> UserProfile:
@@ -232,8 +263,14 @@ class MemoryManager:
                 (user_id,)
             ).fetchone()
             
+            schedule_count = conn.execute(
+                "SELECT COUNT(*) FROM schedules WHERE user_id = ?",
+                (user_id,)
+            ).fetchone()
+            
             return {
                 "interactions": row[0] if row else 0,
+                "saved_schedules": schedule_count[0] if schedule_count else 0,
                 "profile_interaction_count": profile.interaction_count,
                 "common_age_groups": profile.common_age_groups,
                 "favorite_activity_types": profile.favorite_activity_types,
