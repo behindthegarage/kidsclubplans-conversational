@@ -250,6 +250,26 @@ class MemoryManager:
         if profile:
             return profile.to_prompt_context()
         return ""
+
+    def get_user_context(self, user_id: str) -> Dict:
+        """Get structured user context for prompt metadata."""
+        profile = self.get_profile(user_id)
+        if not profile:
+            return {}
+        
+        return {
+            "default_age_group": profile.default_age_group,
+            "program_type": profile.program_type,
+            "prefers_low_prep": profile.prefers_low_prep,
+            "prefers_outdoor": profile.prefers_outdoor,
+            "prefers_indoor": profile.prefers_indoor,
+            "typical_supplies": profile.typical_supplies,
+            "usual_break_times": profile.usual_break_times,
+            "common_age_groups": profile.common_age_groups,
+            "favorite_activity_types": profile.favorite_activity_types,
+            "interaction_count": profile.interaction_count,
+            "last_interaction": profile.last_interaction
+        }
     
     def get_user_stats(self, user_id: str) -> Dict:
         """Get user statistics."""
