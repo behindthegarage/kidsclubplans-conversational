@@ -793,8 +793,8 @@ from fastapi import File, UploadFile
 
 @app.post("/api/transcribe")
 async def transcribe_audio(
-    audio: UploadFile = File(...),
-    http_request: Request
+    http_request: Request,
+    audio: UploadFile = File(...)
 ):
     """
     Transcribe audio to text using Whisper.
