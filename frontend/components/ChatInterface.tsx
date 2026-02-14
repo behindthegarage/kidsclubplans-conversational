@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { Message, Activity, ToolCall, streamChatWithRetry, saveActivity } from '@/lib/api';
+import { Message, Activity, ToolCall, streamChatWithRetry, saveActivity, Schedule } from '@/lib/api';
 import { MessageBubble } from './MessageBubble';
 import { ChatInput } from './ChatInput';
 import { Phase4ToolsPanel } from './Phase4ToolsPanel';
@@ -227,6 +227,27 @@ export function ChatInterface() {
     }
   }, []);
 
+  const handleLoadSchedule = useCallback((schedule: Schedule) => {
+    // Format schedule details into a message
+    const activityList = schedule.activities?.map((a, i) => 
+      `${i + 1}. ${a.start_time} - ${a.title} (${a.duration_minutes}min)`
+    ).join('\n') || 'No activities';
+    
+    const message = `📅 **Schedule for ${schedule.date}** (${schedule.age_group}, ${schedule.duration_hours} hours)\n\n${activityList}\n\nWhat would you like to do with this schedule?`;
+    
+    // Add as assistant message
+    const assistantMessage: Message = {
+      id: uuidv4(),
+      role: 'assistant',
+      content: message,
+      activities: [],
+      toolCalls: [],
+      timestamp: new Date(),
+    };
+    
+    setMessages((prev) => [...prev, assistantMessage]);
+  }, []);
+
   return (
     <div className="flex flex-col h-full bg-background">
       <header className="flex items-center justify-between px-4 py-3 border-b bg-card">
@@ -241,7 +262,7 @@ export function ChatInterface() {
         </div>
 
         <div className="flex items-center gap-2">
-          <ScheduleManager />
+          <ScheduleManager onSelectSchedule={handleLoadSchedule} />
           <Button
             variant={showTools ? "default" : "outline"}
             size="sm"
