@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { 
   Sparkles, Blend, Save, Package, Users, 
-  Clock, Lightbulb, Wand2, Loader2, CheckCircle2
+  Clock, Lightbulb, Wand2, Loader2, CheckCircle2,
+  ChevronDown, ChevronUp
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -26,11 +27,13 @@ export function GeneratedActivityCard({
   onAddToSchedule,
   className 
 }: GeneratedActivityCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [saved, setSaved] = useState(false);
 
-  const handleSave = async () => {
+  const handleSave = async (e: React.MouseEvent) => {
+    e.stopPropagation();
     setIsSaving(true);
     await onSave?.(activity);
     setIsSaving(false);
@@ -38,21 +41,30 @@ export function GeneratedActivityCard({
     setTimeout(() => setSaved(false), 2000);
   };
 
-  const handleAddToSchedule = async () => {
+  const handleAddToSchedule = async (e: React.MouseEvent) => {
+    e.stopPropagation();
     setIsAdding(true);
     await onAddToSchedule?.(activity);
     setIsAdding(false);
+  };
+
+  const handleBlend = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onBlend?.(activity);
   };
 
   const isGenerated = activity.source === 'generated' || activity.source === 'user_generated';
   const isBlended = activity.source === 'blended';
 
   return (
-    <Card className={cn(
-      "mb-3 overflow-hidden border-l-4 shadow-md hover:shadow-lg transition-all",
-      isGenerated ? "border-l-purple-500 bg-purple-50/30" : "border-l-primary",
-      className
-    )}>
+    <Card 
+      className={cn(
+        "mb-3 overflow-hidden border-l-4 shadow-md hover:shadow-lg transition-all cursor-pointer",
+        isGenerated ? "border-l-purple-500" : "border-l-primary",
+        className
+      )}
+      onClick={() => setIsExpanded(!isExpanded)}
+    >
       <CardHeader className="pb-2">
         <div className="flex items-start justify-between gap-2">
           <div className="flex-1">
@@ -102,101 +114,129 @@ export function GeneratedActivityCard({
               )}
             </div>
           </div>
+          
+          <div className="text-muted-foreground">
+            {isExpanded ? (
+              <ChevronUp className="w-5 h-5" />
+            ) : (
+              <ChevronDown className="w-5 h-5" />
+            )}
+          </div>
         </div>
       </CardHeader>
 
-      <CardContent className="pt-0 space-y-3">
-        {activity.description && (
-          <p className="text-sm text-muted-foreground">{activity.description}</p>
-        )}
-
-        <div className="flex flex-wrap gap-4 text-sm">
-          {activity.development_age_group && (
-            <div className="flex items-center gap-1 text-muted-foreground">
-              <Users className="w-4 h-4" />
-              {activity.development_age_group}
-            </div>
-          )}
+      {/* Always show brief description */}
+      <CardContent className="pt-0 pb-3">
+        <p className="text-sm text-muted-foreground line-clamp-2">
+          {activity.description}
+        </p>
+        
+        {/* Quick info row */}
+        <div className="flex flex-wrap gap-4 text-sm mt-2">
           {(activity as any).duration_minutes && (
             <div className="flex items-center gap-1 text-muted-foreground">
               <Clock className="w-4 h-4" />
               {(activity as any).duration_minutes} min
             </div>
           )}
-        </div>
-
-        {activity.supplies && (
-          <div className="flex items-start gap-2"
-          >
-            <Package className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-            <p className="text-sm text-muted-foreground">{activity.supplies}</p>
-          </div>
-        )}
-
-        {activity.instructions && (
-          <div className="flex items-start gap-2"
-          >
-            <Lightbulb className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-            <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-              {activity.instructions}
-            </p>
-          </div>
-        )}
-
-        <div className="flex flex-wrap gap-2 pt-2"
-        >
-          {onAddToSchedule && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleAddToSchedule}
-              disabled={isAdding}
-              className="text-xs"
-            >
-              {isAdding ? (
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              ) : (
-                <Clock className="w-3 h-3 mr-1" />
-              )}
-              Add to Schedule
-            </Button>
-          )}
-
-          {onSave && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleSave}
-              disabled={isSaving || saved}
-              className={cn(
-                "text-xs",
-                saved && "bg-green-100 text-green-800 border-green-200"
-              )}
-            >
-              {isSaving ? (
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              ) : saved ? (
-                <CheckCircle2 className="w-3 h-3 mr-1" />
-              ) : (
-                <Save className="w-3 h-3 mr-1" />
-              )}
-              {saved ? 'Saved!' : 'Save to Database'}
-            </Button>
-          )}
-
-          {onBlend && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => onBlend(activity)}
-              className="text-xs"
-            >
-              <Blend className="w-3 h-3 mr-1" />
-              Blend with Another
-            </Button>
+          {activity.target_age && (
+            <div className="flex items-center gap-1 text-muted-foreground">
+              <Users className="w-4 h-4" />
+              {activity.target_age}
+            </div>
           )}
         </div>
       </CardContent>
+
+      {/* Expanded details */}
+      {isExpanded && (
+        <CardContent className="pt-0 space-y-4 border-t bg-muted/30" onClick={(e) => e.stopPropagation()}>
+          {/* Full description */}
+          {activity.description && (
+            <div className="pt-2">
+              <p className="text-sm text-foreground">{activity.description}</p>
+            </div>
+          )}
+
+          {/* Supplies */}
+          {activity.supplies && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Package className="w-4 h-4 text-primary" />
+                Supplies Needed
+              </div>
+              <p className="text-sm text-muted-foreground pl-6">{activity.supplies}</p>
+            </div>
+          )}
+
+          {/* Instructions */}
+          {activity.instructions && (
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Lightbulb className="w-4 h-4 text-primary" />
+                Instructions
+              </div>
+              <p className="text-sm text-muted-foreground pl-6 whitespace-pre-wrap">
+                {activity.instructions}
+              </p>
+            </div>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex flex-wrap gap-2 pt-2">
+            {onSave && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleSave}
+                disabled={isSaving || saved}
+                className={cn(
+                  "text-xs",
+                  saved && "bg-green-600 hover:bg-green-600"
+                )}
+              >
+                {isSaving ? (
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                ) : saved ? (
+                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                ) : (
+                  <Save className="w-3 h-3 mr-1" />
+                )}
+                {saved ? 'Saved!' : 'Save to Database'}
+              </Button>
+            )}
+
+            {onBlend && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleBlend}
+                className="text-xs"
+              >
+                <Blend className="w-3 h-3 mr-1" />
+                Blend with Another
+              </Button>
+            )}
+
+            {onAddToSchedule && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleAddToSchedule}
+                disabled={isAdding}
+                className="text-xs"
+              >
+                {isAdding ? (
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                ) : (
+                  <Clock className="w-3 h-3 mr-1" />
+                )}
+                Add to Schedule
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      )}
     </Card>
   );
 }
