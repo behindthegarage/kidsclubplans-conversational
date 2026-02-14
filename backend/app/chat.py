@@ -320,8 +320,26 @@ async def stream_openai_with_tools(
                 if result.success and result.result:
                     result_data = result.result
                     
+                    # Handle activities from search_activities
+                    if tool_name == "search_activities" and result_data.get("activities"):
+                        for activity in result_data["activities"]:
+                            activity_event = {
+                                "type": "activity",
+                                "data": {**activity, "source": "database"}
+                            }
+                            yield f"data: {json.dumps(activity_event)}\n\n"
+                    
+                    # Handle activities from search_activities_with_constraints
+                    elif tool_name == "search_activities_with_constraints" and result_data.get("activities"):
+                        for activity in result_data["activities"]:
+                            activity_event = {
+                                "type": "activity",
+                                "data": {**activity, "source": "database"}
+                            }
+                            yield f"data: {json.dumps(activity_event)}\n\n"
+                    
                     # Handle activities from generate_from_supplies
-                    if tool_name == "generate_from_supplies" and "activities" in result_data:
+                    elif tool_name == "generate_from_supplies" and "activities" in result_data:
                         for activity in result_data["activities"]:
                             activity_event = {
                                 "type": "activity",
@@ -492,8 +510,26 @@ async def stream_anthropic_with_tools(
                 if result.success and result.result:
                     result_data = result.result
                     
+                    # Handle activities from search_activities
+                    if tool_name == "search_activities" and result_data.get("activities"):
+                        for activity in result_data["activities"]:
+                            activity_event = {
+                                "type": "activity",
+                                "data": {**activity, "source": "database"}
+                            }
+                            yield f"data: {json.dumps(activity_event)}\n\n"
+                    
+                    # Handle activities from search_activities_with_constraints
+                    elif tool_name == "search_activities_with_constraints" and result_data.get("activities"):
+                        for activity in result_data["activities"]:
+                            activity_event = {
+                                "type": "activity",
+                                "data": {**activity, "source": "database"}
+                            }
+                            yield f"data: {json.dumps(activity_event)}\n\n"
+                    
                     # Handle activities from generate_from_supplies
-                    if tool_name == "generate_from_supplies" and "activities" in result_data:
+                    elif tool_name == "generate_from_supplies" and "activities" in result_data:
                         for activity in result_data["activities"]:
                             activity_event = {
                                 "type": "activity",
