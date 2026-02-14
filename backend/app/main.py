@@ -386,9 +386,12 @@ async def get_weather(request: WeatherRequest):
     """Get weather forecast for a location."""
     try:
         from .weather import check_weather
+        import asyncio
         
-        result = await check_weather(request.location, request.date)
-        return result
+        # Run sync function in thread pool
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, check_weather, request.location, request.date)
+        return result.model_dump()
     except Exception as e:
         logger.error(f"Weather API error: {e}")
         raise HTTPException(status_code=500, detail=f"Weather service error: {str(e)}")
@@ -407,7 +410,10 @@ async def generate_schedule_endpoint(request: ScheduleGenerateRequest, http_requ
     if request.include_weather:
         try:
             from .weather import check_weather
-            weather_data = await check_weather(request.location, request.date)
+            import asyncio
+            loop = asyncio.get_event_loop()
+            weather = await loop.run_in_executor(None, check_weather, request.location, request.date)
+            weather_data = weather.model_dump()
         except Exception as e:
             logger.warning(f"Could not fetch weather: {e}")
     
