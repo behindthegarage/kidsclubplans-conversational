@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { 
   Sparkles, Blend, Save, Package, Users, 
   Clock, Lightbulb, Wand2, Loader2, CheckCircle2,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, Edit2, X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -32,13 +32,17 @@ export function GeneratedActivityCard({
   const [isAdding, setIsAdding] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  
+  // Edit mode state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedActivity, setEditedActivity] = useState<Activity>(activity);
 
   const handleSave = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setIsSaving(true);
     setSaveError(null);
     try {
-      await onSave?.(activity);
+      await onSave?.(editedActivity);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (err) {
@@ -189,7 +193,7 @@ export function GeneratedActivityCard({
           )}
 
           {/* Instructions */}
-          {activity.instructions && (
+          {activity.instructions && !isEditing && (
             <div className="space-y-2">
               <div className="flex items-center gap-2 text-sm font-medium">
                 <Lightbulb className="w-4 h-4 text-primary" />
@@ -209,8 +213,87 @@ export function GeneratedActivityCard({
             </div>
           )}
 
+          {/* Edit Mode Form */}
+          {isEditing && (
+            <div className="space-y-4 border rounded-lg p-4 bg-muted/30" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium">Edit Activity</span>
+                <Button variant="ghost" size="sm" onClick={() => setIsEditing(false)}>
+                  <X className="w-4 h-4" />
+                </Button>
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground">Title</label>
+                <input
+                  type="text"
+                  value={editedActivity.title}
+                  onChange={(e) => setEditedActivity({ ...editedActivity, title: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border rounded-md bg-background"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground">Description</label>
+                <textarea
+                  value={editedActivity.description || ''}
+                  onChange={(e) => setEditedActivity({ ...editedActivity, description: e.target.value })}
+                  rows={3}
+                  className="w-full px-3 py-2 text-sm border rounded-md bg-background resize-none"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <label className="text-xs text-muted-foreground">Instructions (use 1. 2. 3. format)</label>
+                <textarea
+                  value={editedActivity.instructions || ''}
+                  onChange={(e) => setEditedActivity({ ...editedActivity, instructions: e.target.value })}
+                  rows={5}
+                  className="w-full px-3 py-2 text-sm border rounded-md bg-background resize-none"
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
+                  <label className="text-xs text-muted-foreground">Duration (min)</label>
+                  <input
+                    type="number"
+                    value={editedActivity.duration_minutes || 30}
+                    onChange={(e) => setEditedActivity({ ...editedActivity, duration_minutes: parseInt(e.target.value) || 30 })}
+                    className="w-full px-3 py-2 text-sm border rounded-md bg-background"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs text-muted-foreground">Supplies (comma-separated)</label>
+                  <input
+                    type="text"
+                    value={editedActivity.supplies || ''}
+                    onChange={(e) => setEditedActivity({ ...editedActivity, supplies: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border rounded-md bg-background"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Action Buttons */}
           <div className="flex flex-wrap gap-2 pt-2">
+            {/* Edit Button */}
+            {!isEditing && onSave && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsEditing(true);
+                }}
+                className="text-xs"
+              >
+                <Edit2 className="w-3 h-3 mr-1" />
+                Edit
+              </Button>
+            )}
+
             {onSave && (
               <Button
                 variant="default"
