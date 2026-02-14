@@ -196,7 +196,15 @@ export function ActivityCard({
                 <Package className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
                 <div>
                   <p className="text-sm font-medium">Supplies Needed</p>
-                  <p className="text-sm text-muted-foreground">{activity.supplies}</p>
+                  <ul className="text-sm text-muted-foreground pl-4 space-y-1 list-disc list-outside">
+                    {activity.supplies
+                      .split(/[,;]/)
+                      .map(s => s.trim())
+                      .filter(s => s.length > 0)
+                      .map((supply, index) => (
+                        <li key={index}>{supply}</li>
+                      ))}
+                  </ul>
                 </div>
               </div>
             )}
@@ -204,9 +212,19 @@ export function ActivityCard({
             {activity.instructions && (
               <div className="flex items-start gap-2">
                 <Lightbulb className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
-                <div>
+                <div className="flex-1">
                   <p className="text-sm font-medium">Instructions</p>
-                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">{activity.instructions}</p>
+                  <ol className="text-sm text-muted-foreground pl-4 space-y-2 list-decimal list-outside">
+                    {activity.instructions
+                      .split(/\d+\.|\n+/)
+                      .map(step => step.trim())
+                      .filter(step => step.length > 0)
+                      .map((step, index) => (
+                        <li key={index} className="leading-relaxed">
+                          {step.replace(/^[.\s]+|[.\s]+$/g, '')}
+                        </li>
+                      ))}
+                  </ol>
                 </div>
               </div>
             )}
