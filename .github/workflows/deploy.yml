@@ -36,18 +36,22 @@ jobs:
             cd /home/openclaw/kidsclubplans-conversational
             git pull origin main
             
-            # Ensure .env exists (should be manually created on VPS with secrets)
+            # Ensure .env exists
             if [ ! -f backend/.env ]; then
-              echo "⚠️ backend/.env file not found on VPS. Create it manually with required secrets."
+              echo "⚠️ backend/.env file not found on VPS."
               exit 1
             fi
             
-            # Restart services
-            docker-compose down
-            docker-compose up -d --build
+            # Update Python dependencies
+            cd backend
+            source .venv/bin/activate
+            pip install -r requirements.txt
+            
+            # Restart service
+            sudo systemctl restart kcp-backend
             
             # Health check
-            sleep 5
+            sleep 3
             curl -sf http://localhost:8000/health || exit 1
             echo "✅ Deployment successful"
           DEPLOY_SCRIPT
