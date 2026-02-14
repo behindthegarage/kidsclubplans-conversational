@@ -865,6 +865,7 @@ async def search_activities_endpoint(
                 "type": activity.get("activity_type", "Other"),
                 "development_age_group": activity.get("development_age_group", "6-12 years"),
                 "supplies": activity.get("supplies", ""),
+                "instructions": activity.get("instructions", ""),
                 "duration_minutes": activity.get("duration_minutes") or 30,
                 "indoor_outdoor": activity.get("indoor_outdoor", "either"),
                 "score": score,

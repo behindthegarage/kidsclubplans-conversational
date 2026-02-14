@@ -15,6 +15,7 @@ import {
   Clock, 
   Users, 
   Package,
+  ClipboardList,
   Sparkles,
   ChevronDown,
   ChevronUp
@@ -28,6 +29,7 @@ interface Activity {
   type: string;
   development_age_group: string;
   supplies: string;
+  instructions?: string;
   duration_minutes?: number;
   indoor_outdoor?: string;
   score?: number;
@@ -382,6 +384,18 @@ function ActivityDetailPanel({
             Supplies
           </div>
           <p className="text-sm text-muted-foreground">{activity.supplies}</p>
+        </div>
+      )}
+
+      {activity.instructions && (
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <ClipboardList className="w-4 h-4" />
+            Instructions
+          </div>
+          <div className="text-sm text-muted-foreground whitespace-pre-wrap max-h-64 overflow-y-auto">
+            {activity.instructions}
+          </div>
         </div>
       )}
 
