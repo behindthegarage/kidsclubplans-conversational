@@ -1,173 +1,190 @@
-"""
-Memory management for conversations and user context.
-Handles both short-term (session) and long-term (persistent) memory.
-"""
+"""Enhanced memory management with user profiles and persistent storage."""
 
 import json
 import os
+import sqlite3
 from typing import Dict, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import defaultdict
+
+from .models import UserProfile, UserProfileUpdate
 
 
 class MemoryManager:
     """
-    Manages user memory and conversation context.
-    
-    This is a simple in-memory implementation. For production,
-    this should be backed by Redis or a database.
+    Manages user profiles, conversation history, and session context.
+    Uses SQLite for persistent storage.
     """
     
     def __init__(self, storage_path: Optional[str] = None):
         """
-        Initialize memory manager.
+        Initialize memory manager with SQLite backend.
         
         Args:
-            storage_path: Path to store persistent memory (JSON file)
+            storage_path: Path to SQLite database (default: ./memory.db)
         """
-        self.storage_path = storage_path or os.getenv("MEMORY_STORAGE_PATH", "./memory.json")
-        
-        # In-memory storage
-        self.user_profiles: Dict[str, Dict] = defaultdict(dict)
-        self.conversations: Dict[str, List[Dict]] = defaultdict(list)
+        self.db_path = storage_path or os.getenv("MEMORY_DB_PATH", "./memory.db")
         self.session_context: Dict[str, Dict] = {}
         
-        # Load existing memory if available
-        self._load_memory()
-        
-        print(f"🧠 Memory manager initialized (storage: {self.storage_path})")
+        # Initialize database
+        self._init_db()
+        print(f"🧠 Memory manager initialized (SQLite: {self.db_path})")
     
-    def _load_memory(self):
-        """Load persistent memory from disk."""
-        if os.path.exists(self.storage_path):
-            try:
-                with open(self.storage_path, 'r') as f:
-                    data = json.load(f)
-                    self.user_profiles = defaultdict(dict, data.get("profiles", {}))
-                    print(f"📚 Loaded {len(self.user_profiles)} user profiles")
-            except Exception as e:
-                print(f"⚠️ Could not load memory: {e}")
+    def _init_db(self):
+        """Initialize SQLite database with required tables."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS user_profiles (
+                    user_id TEXT PRIMARY KEY,
+                    data TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL,
+                    session_id TEXT,
+                    query TEXT,
+                    response_summary TEXT,
+                    timestamp TEXT NOT NULL,
+                    FOREIGN KEY (user_id) REFERENCES user_profiles(user_id)
+                )
+            """)
+            
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_conversations_user 
+                ON conversations(user_id)
+            """)
+            
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_conversations_session 
+                ON conversations(session_id)
+            """)
+            
+            conn.commit()
     
-    def _save_memory(self):
-        """Save persistent memory to disk."""
-        try:
-            data = {
-                "profiles": dict(self.user_profiles),
-                "last_saved": datetime.now().isoformat()
-            }
-            with open(self.storage_path, 'w') as f:
-                json.dump(data, f, indent=2)
-        except Exception as e:
-            print(f"⚠️ Could not save memory: {e}")
+    def get_or_create_profile(self, user_id: str) -> UserProfile:
+        """Get existing profile or create new one."""
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT data FROM user_profiles WHERE user_id = ?",
+                (user_id,)
+            ).fetchone()
+            
+            if row:
+                data = json.loads(row[0])
+                return UserProfile(**data)
+            else:
+                # Create new profile
+                profile = UserProfile(user_id=user_id)
+                self._save_profile(profile)
+                return profile
     
-    def get_user_context(self, user_id: str) -> Dict:
-        """
-        Get context about a user for personalization.
+    def get_profile(self, user_id: str) -> Optional[UserProfile]:
+        """Get user profile if it exists."""
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT data FROM user_profiles WHERE user_id = ?",
+                (user_id,)
+            ).fetchone()
+            
+            if row:
+                data = json.loads(row[0])
+                return UserProfile(**data)
+            return None
+    
+    def update_profile(self, user_id: str, update: UserProfileUpdate) -> UserProfile:
+        """Update user profile with new data."""
+        profile = self.get_or_create_profile(user_id)
         
-        Returns:
-            Dict with preferences, patterns, history summary
-        """
-        profile = self.user_profiles.get(user_id, {})
+        # Update fields from the update model
+        update_data = update.model_dump(exclude_unset=True)
+        for field, value in update_data.items():
+            if hasattr(profile, field):
+                setattr(profile, field, value)
         
-        return {
-            "preferences": profile.get("preferences", {}),
-            "common_age_groups": profile.get("common_age_groups", []),
-            "favorite_activity_types": profile.get("favorite_activity_types", []),
-            "typical_schedule": profile.get("typical_schedule", {}),
-            "last_interaction": profile.get("last_interaction")
-        }
+        profile.updated_at = datetime.now().isoformat()
+        self._save_profile(profile)
+        return profile
+    
+    def _save_profile(self, profile: UserProfile):
+        """Save profile to database."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """INSERT OR REPLACE INTO user_profiles 
+                   (user_id, data, created_at, updated_at)
+                   VALUES (?, ?, ?, ?)""",
+                (
+                    profile.user_id,
+                    json.dumps(profile.model_dump()),
+                    profile.created_at,
+                    profile.updated_at
+                )
+            )
+            conn.commit()
     
     def add_interaction(
         self, 
         user_id: str, 
         query: str, 
-        context: List[Dict],
+        response_summary: str = "",
         session_id: Optional[str] = None
     ):
-        """
-        Record an interaction for learning user patterns.
-        
-        Args:
-            user_id: Unique user identifier
-            query: The user's query
-            context: Activities that were relevant
-            session_id: Optional session identifier
-        """
+        """Record a conversation interaction."""
         timestamp = datetime.now().isoformat()
         
-        # Add to conversation history
-        interaction = {
-            "timestamp": timestamp,
-            "query": query,
-            "activity_count": len(context),
-            "session_id": session_id
-        }
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                """INSERT INTO conversations 
+                   (user_id, session_id, query, response_summary, timestamp)
+                   VALUES (?, ?, ?, ?, ?)""",
+                (user_id, session_id, query, response_summary, timestamp)
+            )
+            conn.commit()
         
-        self.conversations[user_id].append(interaction)
+        # Update profile with interaction count and patterns
+        profile = self.get_or_create_profile(user_id)
+        profile.last_interaction = timestamp
+        profile.interaction_count += 1
         
-        # Update user profile based on query
-        self._update_profile_from_query(user_id, query, context)
+        # Extract patterns from query
+        self._extract_patterns(profile, query)
         
-        # Save periodically (every 10 interactions)
-        if len(self.conversations[user_id]) % 10 == 0:
-            self._save_memory()
+        self._save_profile(profile)
     
-    def _update_profile_from_query(self, user_id: str, query: str, context: List[Dict]):
-        """
-        Extract insights from query to update user profile.
-        
-        This is a simple keyword-based approach. In production,
-        this could use LLM extraction.
-        """
-        profile = self.user_profiles[user_id]
-        
-        # Update last interaction
-        profile["last_interaction"] = datetime.now().isoformat()
-        
-        # Track preferences based on keywords in query
+    def _extract_patterns(self, profile: UserProfile, query: str):
+        """Extract insights from query to update profile."""
         query_lower = query.lower()
         
         # Age groups
-        age_keywords = {
-            "5": "5-6 years",
-            "6": "6-7 years", 
-            "7": "7-8 years",
-            "8": "8-9 years",
-            "9": "9-10 years",
-            "10": "10-11 years",
+        age_patterns = {
+            "5 year": "5-6 years",
+            "6 year": "6-7 years",
+            "7 year": "7-8 years",
+            "8 year": "8-9 years",
+            "9 year": "9-10 years",
+            "10 year": "10-11 years",
             "preschool": "3-5 years",
             "elementary": "5-10 years"
         }
         
-        if "age_groups" not in profile:
-            profile["age_groups"] = defaultdict(int)
+        for pattern, age_group in age_patterns.items():
+            if pattern in query_lower:
+                profile.common_age_groups[age_group] = profile.common_age_groups.get(age_group, 0) + 1
         
-        for keyword, age_group in age_keywords.items():
-            if keyword in query_lower:
-                profile["age_groups"][age_group] += 1
-        
-        # Activity types mentioned
-        activity_types = ["art", "craft", "science", "cooking", "physical", "game", "outdoor", "indoor"]
-        
-        if "favorite_activity_types" not in profile:
-            profile["favorite_activity_types"] = defaultdict(int)
-        
+        # Activity types
+        activity_types = ["art", "craft", "science", "cooking", "physical", "game", "outdoor", "indoor", "sensory", "stem"]
         for activity_type in activity_types:
             if activity_type in query_lower:
-                profile["favorite_activity_types"][activity_type] += 1
+                profile.favorite_activity_types[activity_type] = profile.favorite_activity_types.get(activity_type, 0) + 1
         
-        # Preferences (outdoor/indoor, low prep, etc.)
-        if "preferences" not in profile:
-            profile["preferences"] = {}
-        
-        if "outdoor" in query_lower or "outside" in query_lower:
-            profile["preferences"]["prefers_outdoor"] = True
-        
-        if "indoor" in query_lower or "inside" in query_lower:
-            profile["preferences"]["prefers_indoor"] = True
-        
-        if "low prep" in query_lower or "easy" in query_lower or "simple" in query_lower:
-            profile["preferences"]["prefers_low_prep"] = True
+        # Preferences (only if not explicitly set)
+        if profile.prefers_outdoor is None and ("outdoor" in query_lower or "outside" in query_lower):
+            # Don't auto-set, just track frequency
+            pass
     
     def get_conversation_history(
         self, 
@@ -176,52 +193,49 @@ class MemoryManager:
         limit: int = 10
     ) -> List[Dict]:
         """Get recent conversation history for a user."""
-        history = self.conversations.get(user_id, [])
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            
+            if session_id:
+                rows = conn.execute(
+                    """SELECT * FROM conversations 
+                       WHERE user_id = ? AND session_id = ?
+                       ORDER BY timestamp DESC LIMIT ?""",
+                    (user_id, session_id, limit)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT * FROM conversations 
+                       WHERE user_id = ?
+                       ORDER BY timestamp DESC LIMIT ?""",
+                    (user_id, limit)
+                ).fetchall()
+            
+            return [dict(row) for row in rows]
+    
+    def get_user_context_for_prompt(self, user_id: str) -> str:
+        """Get user context formatted for LLM prompts."""
+        profile = self.get_profile(user_id)
+        if profile:
+            return profile.to_prompt_context()
+        return ""
+    
+    def get_user_stats(self, user_id: str) -> Dict:
+        """Get user statistics."""
+        profile = self.get_profile(user_id)
+        if not profile:
+            return {"interactions": 0}
         
-        if session_id:
-            history = [h for h in history if h.get("session_id") == session_id]
-        
-        return history[-limit:]
-    
-    def set_session_context(self, session_id: str, context: Dict):
-        """Set temporary context for a session (e.g., current schedule being built)."""
-        self.session_context[session_id] = {
-            "data": context,
-            "timestamp": datetime.now().isoformat()
-        }
-    
-    def get_session_context(self, session_id: str) -> Optional[Dict]:
-        """Get temporary context for a session."""
-        ctx = self.session_context.get(session_id)
-        if ctx:
-            # Check if context is stale (older than 1 hour)
-            ctx_time = datetime.fromisoformat(ctx["timestamp"])
-            if datetime.now() - ctx_time > timedelta(hours=1):
-                del self.session_context[session_id]
-                return None
-            return ctx["data"]
-        return None
-    
-    def clear_session_context(self, session_id: str):
-        """Clear temporary session context."""
-        if session_id in self.session_context:
-            del self.session_context[session_id]
-
-
-# Simple in-memory fallback for testing
-class SimpleMemoryManager:
-    """Ultra-simple memory for testing without persistence."""
-    
-    def __init__(self):
-        self.users = {}
-    
-    def get_user_context(self, user_id: str) -> Dict:
-        return self.users.get(user_id, {})
-    
-    def add_interaction(self, user_id: str, query: str, context: List[Dict], session_id=None):
-        if user_id not in self.users:
-            self.users[user_id] = {"interactions": 0}
-        self.users[user_id]["interactions"] += 1
-    
-    def get_conversation_history(self, user_id: str, session_id=None, limit=10):
-        return []
+        with sqlite3.connect(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM conversations WHERE user_id = ?",
+                (user_id,)
+            ).fetchone()
+            
+            return {
+                "interactions": row[0] if row else 0,
+                "profile_interaction_count": profile.interaction_count,
+                "common_age_groups": profile.common_age_groups,
+                "favorite_activity_types": profile.favorite_activity_types,
+                "preferences_set": bool(profile.default_age_group or profile.program_type)
+            }

@@ -89,11 +89,20 @@ async def chat_endpoint(
 
     # Get user context from memory if available
     user_context = {}
+    profile_context = ""
     if memory_manager:
         user_context = memory_manager.get_user_context(request.user_id)
+        # Get formatted profile context for prompt injection
+        profile_context = memory_manager.get_user_context_for_prompt(request.user_id)
 
     # Build messages for LLM
-    messages = [{"role": "system", "content": get_system_prompt(user_context)}]
+    system_content = get_system_prompt(user_context)
+    
+    # Inject user profile context if available
+    if profile_context:
+        system_content += f"\n\n{profile_context}"
+    
+    messages = [{"role": "system", "content": system_content}]
     for msg in request.messages:
         messages.append({"role": msg.role, "content": msg.content})
 
@@ -156,10 +165,16 @@ async def chat_endpoint(
 
     # Save memory
     if memory_manager and last_user_message:
+        # Build a summary of what was returned
+        response_summary = f"Retrieved {len(activity_context)} activities"
+        if activity_context:
+            activity_titles = [a.get('title', 'Unknown') for a in activity_context[:3]]
+            response_summary += f": {', '.join(activity_titles)}"
+        
         memory_manager.add_interaction(
             user_id=request.user_id,
             query=last_user_message,
-            context=activity_context,
+            response_summary=response_summary,
             session_id=request.session_id,
         )
 

@@ -21,6 +21,7 @@ from .chat import ChatRequest as EngineChatRequest
 from .chat import Message as EngineMessage
 from .chat import chat_endpoint
 from .memory import MemoryManager
+from .models import UserProfile, UserProfileUpdate
 from .observability import (
     classify_error,
     configure_logging,
@@ -309,3 +310,60 @@ async def clear_conversation(conversation_id: str):
 
     memory_manager.clear_session_context(conversation_id)
     return {"message": "Conversation context cleared"}
+
+
+# Profile endpoints for Phase 2: Context & Memory
+@app.get("/profile")
+async def get_profile(http_request: Request):
+    """Get current user's profile."""
+    if not memory_manager:
+        raise HTTPException(status_code=503, detail="Memory manager not initialized")
+    
+    trusted_user_id, _ = _get_or_create_session_user_id(http_request)
+    profile = memory_manager.get_profile(trusted_user_id)
+    
+    if profile:
+        return profile.model_dump()
+    return {"message": "No profile found. Create one with POST /profile"}
+
+
+@app.post("/profile")
+async def create_or_update_profile(request: UserProfileUpdate, http_request: Request):
+    """Create or update user profile."""
+    if not memory_manager:
+        raise HTTPException(status_code=503, detail="Memory manager not initialized")
+    
+    trusted_user_id, _ = _get_or_create_session_user_id(http_request)
+    profile = memory_manager.update_profile(trusted_user_id, request)
+    
+    log_event(
+        logger,
+        logging.INFO,
+        "profile_updated",
+        user_id=trusted_user_id,
+        fields_updated=list(request.model_dump(exclude_unset=True).keys())
+    )
+    
+    return profile.model_dump()
+
+
+@app.get("/profile/stats")
+async def get_profile_stats(http_request: Request):
+    """Get user statistics and learned patterns."""
+    if not memory_manager:
+        raise HTTPException(status_code=503, detail="Memory manager not initialized")
+    
+    trusted_user_id, _ = _get_or_create_session_user_id(http_request)
+    stats = memory_manager.get_user_stats(trusted_user_id)
+    return stats
+
+
+@app.get("/conversations")
+async def get_user_conversations(http_request: Request, limit: int = 20):
+    """Get user's conversation history across all sessions."""
+    if not memory_manager:
+        raise HTTPException(status_code=503, detail="Memory manager not initialized")
+    
+    trusted_user_id, _ = _get_or_create_session_user_id(http_request)
+    history = memory_manager.get_conversation_history(trusted_user_id, limit=limit)
+    return {"conversations": history}
