@@ -58,6 +58,44 @@ const generateTimeSlots = () => {
 
 const TIME_SLOTS = generateTimeSlots();
 
+// Helper to convert time string to minutes since midnight
+const timeToMinutes = (timeStr: string): number => {
+  const [time, period] = timeStr.split(' ');
+  const [h, m] = time.split(':').map(Number);
+  let hour24 = h;
+  if (period === 'PM' && h !== 12) hour24 += 12;
+  if (period === 'AM' && h === 12) hour24 = 0;
+  return hour24 * 60 + m;
+};
+
+// Check for time conflicts
+const findConflicts = (activities: ScheduledActivity[]): { id: string; conflictingWith: string[] }[] => {
+  const conflicts: { id: string; conflictingWith: string[] }[] = [];
+  
+  activities.forEach((act1, i) => {
+    const act1Start = timeToMinutes(act1.start_time);
+    const act1End = act1Start + act1.duration_minutes;
+    const conflicting: string[] = [];
+    
+    activities.forEach((act2, j) => {
+      if (i === j) return;
+      const act2Start = timeToMinutes(act2.start_time);
+      const act2End = act2Start + act2.duration_minutes;
+      
+      // Check overlap
+      if (act1Start < act2End && act1End > act2Start) {
+        conflicting.push(act2.id);
+      }
+    });
+    
+    if (conflicting.length > 0) {
+      conflicts.push({ id: act1.id, conflictingWith: conflicting });
+    }
+  });
+  
+  return conflicts;
+};
+
 interface WeeklySchedulerProps {
   initialWeek?: number;
   onSave?: (schedule: WeekSchedule) => void;
@@ -501,86 +539,108 @@ function DayColumn({
   const [showAddForm, setShowAddForm] = useState(false);
   const [newActivityTime, setNewActivityTime] = useState('9:00 AM');
 
+  // Calculate conflicts for this day
+  const dayConflicts = findConflicts(activities);
+  const conflictingIds = new Set(dayConflicts.flatMap(c => [c.id, ...c.conflictingWith]));
+
   return (
     <div className="flex flex-col h-full">
       <div className="text-center py-1.5 lg:py-2 font-medium border-b mb-1.5 lg:mb-2 text-sm lg:text-base">
         {label}
+        {dayConflicts.length > 0 && (
+          <span className="ml-2 text-[10px] bg-destructive text-destructive-foreground px-1.5 py-0.5 rounded-full">
+            {dayConflicts.length} conflict{dayConflicts.length !== 1 ? 's' : ''}
+          </span>
+        )}
       </div>
       
       <div className="flex-1 space-y-1.5 lg:space-y-2 min-h-[150px] lg:min-h-[400px]">
-        {activities.map((activity, index) => (
-          <Card 
-            key={activity.id} 
-            className={cn(
-              "relative group cursor-move",
-              draggedItem?.day === day && draggedItem?.index === index && "opacity-50"
-            )}
-            draggable
-            onDragStart={() => onDragStart(day, index)}
-            onDragOver={(e) => onDragOver(e, day, index)}
-            onDragEnd={onDragEnd}
-          >
-            <CardContent className="p-2 lg:p-3">
-              <div className="flex items-start gap-1">
-                {/* Drag Handle */}
-                <div className="pt-1 text-muted-foreground">
-                  <GripVertical className="w-4 h-4" />
-                </div>
-                
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm truncate">{activity.title}</p>
-                  
-                  {/* Time Picker */}
-                  <div className="flex items-center gap-1 mt-0.5 lg:mt-1">
-                    <Clock className="w-3 h-3 text-muted-foreground" />
-                    <select
-                      value={activity.start_time}
-                      onChange={(e) => onUpdateTime(activity.id, e.target.value)}
-                      className="text-xs px-1 py-0.5 border rounded bg-background"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {TIME_SLOTS.map(slot => (
-                        <option key={slot} value={slot}>{slot}</option>
-                      ))}
-                    </select>
-                    <span className="text-xs text-muted-foreground">({activity.duration_minutes}m)</span>
+        {activities.map((activity, index) => {
+          const hasConflict = conflictingIds.has(activity.id);
+          
+          return (
+            <Card 
+              key={activity.id} 
+              className={cn(
+                "relative group cursor-move",
+                draggedItem?.day === day && draggedItem?.index === index && "opacity-50",
+                hasConflict && "border-destructive border-2"
+              )}
+              draggable
+              onDragStart={() => onDragStart(day, index)}
+              onDragOver={(e) => onDragOver(e, day, index)}
+              onDragEnd={onDragEnd}
+            >
+              <CardContent className="p-2 lg:p-3">
+                <div className="flex items-start gap-1">
+                  {/* Drag Handle */}
+                  <div className="pt-1 text-muted-foreground">
+                    <GripVertical className="w-4 h-4" />
                   </div>
                   
-                  <Badge variant="outline" className="text-[10px] lg:text-xs mt-1 px-1 py-0">
-                    {activity.type}
-                  </Badge>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{activity.title}</p>
+                    
+                    {/* Time Picker */}
+                    <div className="flex items-center gap-1 mt-0.5 lg:mt-1">
+                      <Clock className="w-3 h-3 text-muted-foreground" />
+                      <select
+                        value={activity.start_time}
+                        onChange={(e) => onUpdateTime(activity.id, e.target.value)}
+                        className={cn(
+                          "text-xs px-1 py-0.5 border rounded bg-background",
+                          hasConflict && "border-destructive text-destructive"
+                        )}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {TIME_SLOTS.map(slot => (
+                          <option key={slot} value={slot}>{slot}</option>
+                        ))}
+                      </select>
+                      <span className="text-xs text-muted-foreground">({activity.duration_minutes}m)</span>
+                      {hasConflict && (
+                        <span className="text-[10px] text-destructive font-medium">
+                          Conflict!
+                        </span>
+                      )}
+                    </div>
+                    
+                    <Badge variant="outline" className="text-[10px] lg:text-xs mt-1 px-1 py-0">
+                      {activity.type}
+                    </Badge>
+                  </div>
+                  
+                  <div className="flex flex-col gap-1">
+                    {/* Move dropdown */}
+                    <select
+                      className="text-[10px] lg:text-xs px-1 py-0.5 border rounded bg-background lg:opacity-0 lg:group-hover:opacity-100 transition-opacity"
+                      value=""
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          onMoveActivity(day, e.target.value as typeof DAYS[number], activity.id);
+                          e.target.value = '';
+                        }
+                      }}
+                    >
+                      <option value="">Move to...</option>
+                      {DAYS.filter(d => d !== day).map(d => (
+                        <option key={d} value={d}>{DAY_LABELS[d]}</option>
+                      ))}
+                    </select>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-5 w-5 lg:h-6 lg:w-6 p-0 lg:opacity-0 lg:group-hover:opacity-100"
+                      onClick={() => onRemoveActivity(activity.id)}
+                    >
+                      <Trash2 className="w-3 h-3 text-destructive" />
+                    </Button>
+                  </div>
                 </div>
-                
-                <div className="flex flex-col gap-1">
-                  {/* Move dropdown */}
-                  <select
-                    className="text-[10px] lg:text-xs px-1 py-0.5 border rounded bg-background lg:opacity-0 lg:group-hover:opacity-100 transition-opacity"
-                    value=""
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        onMoveActivity(day, e.target.value as typeof DAYS[number], activity.id);
-                        e.target.value = '';
-                      }
-                    }}
-                  >
-                    <option value="">Move to...</option>
-                    {DAYS.filter(d => d !== day).map(d => (
-                      <option key={d} value={d}>{DAY_LABELS[d]}</option>
-                    ))}
-                  </select>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-5 w-5 lg:h-6 lg:w-6 p-0 lg:opacity-0 lg:group-hover:opacity-100"
-                    onClick={() => onRemoveActivity(activity.id)}
-                  >
-                    <Trash2 className="w-3 h-3 text-destructive" />
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              </CardContent>
+            </Card>
+          );
+        })}
 
         {/* Add Activity Form */}
         {showAddForm ? (
