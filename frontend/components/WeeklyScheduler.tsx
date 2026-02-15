@@ -279,6 +279,29 @@ export function WeeklyScheduler({ initialWeek = 1, onSave }: WeeklySchedulerProp
     }
   };
 
+  const handleDuplicate = async (targetWeek: number) => {
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/schedules/weekly/duplicate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          from_week: currentWeek,
+          to_week: targetWeek
+        })
+      });
+      
+      if (response.ok) {
+        alert(`Week ${currentWeek} duplicated to Week ${targetWeek}!`);
+      } else {
+        throw new Error('Duplicate failed');
+      }
+    } catch (e) {
+      console.error('Failed to duplicate:', e);
+      alert('Failed to duplicate week. Please try again.');
+    }
+  };
+
   // Calculate position for timeline view
   const getTimelinePosition = (startTime: string) => {
     const index = TIME_SLOTS.indexOf(startTime);
@@ -324,6 +347,23 @@ export function WeeklyScheduler({ initialWeek = 1, onSave }: WeeklySchedulerProp
               onChange={(e) => setSchedule(prev => ({ ...prev, theme: e.target.value }))}
               className="px-3 py-1.5 text-sm border rounded-md bg-background w-full sm:w-48 lg:w-64"
             />
+
+            {/* Duplicate Week Dropdown */}
+            <select
+              className="text-xs px-2 py-1.5 border rounded-md bg-background"
+              value=""
+              onChange={(e) => {
+                if (e.target.value) {
+                  handleDuplicate(parseInt(e.target.value));
+                  e.target.value = '';
+                }
+              }}
+            >
+              <option value="">Duplicate to...</option>
+              {[1, 2, 3, 4, 5, 6, 7, 8].filter(w => w !== currentWeek).map(w => (
+                <option key={w} value={w}>Week {w}</option>
+              ))}
+            </select>
           </div>
 
           <div className="flex gap-1 lg:gap-2 flex-wrap">
