@@ -27,6 +27,7 @@ interface ScheduledActivity {
   duration_minutes: number;
   type: string;
   supplies?: string;
+  staff?: string;
 }
 
 interface WeekSchedule {
@@ -41,6 +42,9 @@ interface WeekSchedule {
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'] as const;
 const DAY_LABELS = { monday: 'Mon', tuesday: 'Tue', wednesday: 'Wed', thursday: 'Thu', friday: 'Fri' };
+
+// Staff members (could come from Kinawa Command Center later)
+const STAFF_LIST = ['Adam', 'Ashlee', 'Kayden', 'Morgan', 'Ethan', 'Khari', 'Gavin', 'Avah', 'Gibson'];
 
 // Generate time slots in 15-min increments from 7 AM to 6 PM
 const generateTimeSlots = () => {
@@ -115,6 +119,7 @@ export function WeeklyScheduler({ initialWeek = 1, onSave }: WeeklySchedulerProp
   const [showSupplyList, setShowSupplyList] = useState(false);
   const [viewMode, setViewMode] = useState<'list' | 'timeline'>('list');
   const [draggedItem, setDraggedItem] = useState<{day: typeof DAYS[number], index: number} | null>(null);
+  const [staffFilter, setStaffFilter] = useState<string>('');
 
   // Load activities from localStorage when week changes
   useEffect(() => {
@@ -209,6 +214,15 @@ export function WeeklyScheduler({ initialWeek = 1, onSave }: WeeklySchedulerProp
       updated[day] = sortDayByTime(updated[day]);
       return updated;
     });
+  };
+
+  const updateActivityStaff = (day: typeof DAYS[number], activityId: string, staffName: string) => {
+    setSchedule(prev => ({
+      ...prev,
+      [day]: prev[day].map(a => 
+        a.id === activityId ? { ...a, staff: staffName } : a
+      ),
+    }));
   };
 
   const removeActivity = (day: typeof DAYS[number], activityId: string) => {
@@ -405,6 +419,18 @@ export function WeeklyScheduler({ initialWeek = 1, onSave }: WeeklySchedulerProp
           </div>
 
           <div className="flex gap-1 lg:gap-2 flex-wrap">
+            {/* Staff Filter */}
+            <select
+              className="text-xs px-2 py-1.5 border rounded-md bg-background"
+              value={staffFilter}
+              onChange={(e) => setStaffFilter(e.target.value)}
+            >
+              <option value="">All Staff</option>
+              {STAFF_LIST.map(staff => (
+                <option key={staff} value={staff}>{staff}</option>
+              ))}
+            </select>
+
             {/* View Toggle */}
             <div className="flex border rounded-md overflow-hidden">
               <Button
@@ -474,10 +500,12 @@ export function WeeklyScheduler({ initialWeek = 1, onSave }: WeeklySchedulerProp
                   onRemoveActivity={(id) => removeActivity(day, id)}
                   onMoveActivity={moveActivity}
                   onUpdateTime={(id, time) => updateActivityTime(day, id, time)}
+                  onUpdateStaff={(id, staff) => updateActivityStaff(day, id, staff)}
                   onDragStart={handleDragStart}
                   onDragOver={handleDragOver}
                   onDragEnd={handleDragEnd}
                   draggedItem={draggedItem}
+                  staffFilter={staffFilter}
                 />
               ))}
             </div>
@@ -526,15 +554,17 @@ interface DayColumnProps {
   onRemoveActivity: (id: string) => void;
   onMoveActivity: (fromDay: typeof DAYS[number], toDay: typeof DAYS[number], id: string) => void;
   onUpdateTime: (id: string, time: string) => void;
+  onUpdateStaff: (id: string, staff: string) => void;
   onDragStart: (day: typeof DAYS[number], index: number) => void;
   onDragOver: (e: React.DragEvent, day: typeof DAYS[number], index: number) => void;
   onDragEnd: () => void;
   draggedItem: {day: typeof DAYS[number], index: number} | null;
+  staffFilter: string;
 }
 
 function DayColumn({ 
   day, label, activities, onAddActivity, onRemoveActivity, onMoveActivity, 
-  onUpdateTime, onDragStart, onDragOver, onDragEnd, draggedItem 
+  onUpdateTime, onUpdateStaff, onDragStart, onDragOver, onDragEnd, draggedItem, staffFilter 
 }: DayColumnProps) {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newActivityTime, setNewActivityTime] = useState('9:00 AM');
@@ -542,6 +572,11 @@ function DayColumn({
   // Calculate conflicts for this day
   const dayConflicts = findConflicts(activities);
   const conflictingIds = new Set(dayConflicts.flatMap(c => [c.id, ...c.conflictingWith]));
+
+  // Filter activities by staff if filter is set
+  const filteredActivities = staffFilter 
+    ? activities.filter(a => a.staff === staffFilter)
+    : activities;
 
   return (
     <div className="flex flex-col h-full">
@@ -552,10 +587,15 @@ function DayColumn({
             {dayConflicts.length} conflict{dayConflicts.length !== 1 ? 's' : ''}
           </span>
         )}
+        {staffFilter && (
+          <span className="ml-2 text-[10px] bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full">
+            Filtered
+          </span>
+        )}
       </div>
       
       <div className="flex-1 space-y-1.5 lg:space-y-2 min-h-[150px] lg:min-h-[400px]">
-        {activities.map((activity, index) => {
+        {filteredActivities.map((activity, index) => {
           const hasConflict = conflictingIds.has(activity.id);
           
           return (
@@ -564,7 +604,8 @@ function DayColumn({
               className={cn(
                 "relative group cursor-move",
                 draggedItem?.day === day && draggedItem?.index === index && "opacity-50",
-                hasConflict && "border-destructive border-2"
+                hasConflict && "border-destructive border-2",
+                activity.staff && "border-l-4 border-l-primary"
               )}
               draggable
               onDragStart={() => onDragStart(day, index)}
@@ -602,6 +643,26 @@ function DayColumn({
                         <span className="text-[10px] text-destructive font-medium">
                           Conflict!
                         </span>
+                      )}
+                    </div>
+
+                    {/* Staff Dropdown */}
+                    <div className="flex items-center gap-1 mt-1">
+                      <select
+                        value={activity.staff || ''}
+                        onChange={(e) => onUpdateStaff(activity.id, e.target.value)}
+                        className="text-[10px] px-1 py-0.5 border rounded bg-background"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <option value="">Assign staff...</option>
+                        {STAFF_LIST.map(staff => (
+                          <option key={staff} value={staff}>{staff}</option>
+                        ))}
+                      </select>
+                      {activity.staff && (
+                        <Badge variant="secondary" className="text-[10px] px-1 py-0">
+                          {activity.staff}
+                        </Badge>
                       )}
                     </div>
                     
