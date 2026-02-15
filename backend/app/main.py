@@ -974,3 +974,112 @@ async def transcribe_audio(
             status_code=500,
             detail="Transcription failed. Please try again."
         )
+
+
+# =============================================================================
+# Phase 2: Weekly Schedule Persistence Endpoints
+# =============================================================================
+
+@app.post("/api/schedules/weekly/save")
+async def save_weekly_schedule(
+    request: Request,
+    schedule_data: dict
+):
+    """
+    Save a weekly schedule to the database.
+    """
+    if not memory_manager:
+        raise HTTPException(status_code=503, detail="Memory manager not initialized")
+    
+    try:
+        week_number = schedule_data.get("week_number")
+        theme = schedule_data.get("theme", "")
+        activities = schedule_data.get("activities", [])
+        
+        # Save to database using memory manager
+        memory_manager.save_weekly_schedule(
+            week_number=week_number,
+            theme=theme,
+            activities=activities
+        )
+        
+        return {
+            "success": True,
+            "message": f"Week {week_number} saved successfully",
+            "activities_count": len(activities)
+        }
+    except Exception as e:
+        logger.error(f"Failed to save weekly schedule: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to save: {str(e)}")
+
+
+@app.get("/api/schedules/weekly/{week_number}")
+async def get_weekly_schedule(
+    week_number: int,
+    request: Request
+):
+    """
+    Get a weekly schedule by week number.
+    """
+    if not memory_manager:
+        raise HTTPException(status_code=503, detail="Memory manager not initialized")
+    
+    try:
+        schedule = memory_manager.get_weekly_schedule(week_number)
+        
+        if not schedule:
+            return {
+                "success": True,
+                "week_number": week_number,
+                "theme": "",
+                "activities": []
+            }
+        
+        return {
+            "success": True,
+            "week_number": week_number,
+            "theme": schedule.get("theme", ""),
+            "activities": schedule.get("activities", [])
+        }
+    except Exception as e:
+        logger.error(f"Failed to get weekly schedule: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load: {str(e)}")
+
+
+@app.post("/api/schedules/weekly/duplicate")
+async def duplicate_weekly_schedule(
+    request: Request,
+    duplicate_data: dict
+):
+    """
+    Duplicate a week to another week.
+    """
+    if not memory_manager:
+        raise HTTPException(status_code=503, detail="Memory manager not initialized")
+    
+    try:
+        from_week = duplicate_data.get("from_week")
+        to_week = duplicate_data.get("to_week")
+        
+        # Get source schedule
+        source = memory_manager.get_weekly_schedule(from_week)
+        if not source:
+            raise HTTPException(status_code=404, detail=f"Week {from_week} not found")
+        
+        # Save to target week
+        memory_manager.save_weekly_schedule(
+            week_number=to_week,
+            theme=source.get("theme", ""),
+            activities=source.get("activities", [])
+        )
+        
+        return {
+            "success": True,
+            "message": f"Week {from_week} duplicated to Week {to_week}",
+            "activities_copied": len(source.get("activities", []))
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to duplicate schedule: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to duplicate: {str(e)}")

@@ -201,3 +201,36 @@ class UserProfileUpdate(BaseModel):
     typical_supplies: Optional[list[str]] = None
     usual_break_times: Optional[list[str]] = None
     typical_activity_length: Optional[str] = None
+
+
+# =============================================================================
+# Weekly Schedule Models (Phase 2)
+# =============================================================================
+
+class WeeklyScheduleActivity(BaseModel):
+    """An activity within a weekly schedule."""
+    id: str
+    activity_id: Optional[str] = None
+    title: str
+    description: Optional[str] = None
+    start_time: str = Field(..., description="e.g., '9:00 AM'")
+    duration_minutes: int
+    type: str
+    supplies: Optional[str] = None
+    day: str = Field(..., description="monday, tuesday, wednesday, thursday, or friday")
+
+
+class WeeklySchedule(BaseModel):
+    """A complete weekly schedule for summer camp planning."""
+    week_number: int = Field(..., ge=1, le=8)
+    theme: Optional[str] = None
+    activities: List[WeeklyScheduleActivity] = Field(default_factory=list)
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class WeeklyScheduleSaveRequest(BaseModel):
+    """Request to save a weekly schedule."""
+    week_number: int
+    theme: Optional[str] = None
+    activities: List[WeeklyScheduleActivity]

@@ -124,6 +124,17 @@ class MemoryManager:
                 ON activities(activity_type)
             """)
             
+            # Phase 2: Weekly schedules table for summer camp planning
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS weekly_schedules (
+                    week_number INTEGER PRIMARY KEY,
+                    theme TEXT,
+                    activities TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+            """)
+            
             conn.commit()
     
     def get_or_create_profile(self, user_id: str) -> UserProfile:
@@ -424,3 +435,70 @@ class MemoryManager:
                 (user_id,)
             ).fetchone()
             return row[0] if row else 0
+
+    # =============================================================================
+    # Phase 2: Weekly Schedule Methods
+    # =============================================================================
+
+    def save_weekly_schedule(self, week_number: int, theme: str, activities: list) -> bool:
+        """Save a weekly schedule to the database."""
+        try:
+            now = datetime.now().isoformat()
+            activities_json = json.dumps(activities)
+
+            with sqlite3.connect(self.db_path) as conn:
+                conn.execute("""
+                    INSERT OR REPLACE INTO weekly_schedules
+                    (week_number, theme, activities, created_at, updated_at)
+                    VALUES (?, ?, ?, COALESCE((SELECT created_at FROM weekly_schedules WHERE week_number = ?), ?), ?)
+                """, (week_number, theme, activities_json, week_number, now, now))
+                conn.commit()
+            return True
+        except Exception as e:
+            print(f"Failed to save weekly schedule: {e}")
+            return False
+
+    def get_weekly_schedule(self, week_number: int) -> Optional[Dict]:
+        """Get a weekly schedule by week number."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                row = conn.execute(
+                    "SELECT * FROM weekly_schedules WHERE week_number = ?",
+                    (week_number,)
+                ).fetchone()
+
+                if row:
+                    return {
+                        "week_number": row["week_number"],
+                        "theme": row["theme"],
+                        "activities": json.loads(row["activities"]),
+                        "created_at": row["created_at"],
+                        "updated_at": row["updated_at"]
+                    }
+                return None
+        except Exception as e:
+            print(f"Failed to get weekly schedule: {e}")
+            return None
+
+    def list_all_weekly_schedules(self) -> List[Dict]:
+        """List all saved weekly schedules."""
+        try:
+            with sqlite3.connect(self.db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    "SELECT * FROM weekly_schedules ORDER BY week_number"
+                ).fetchall()
+
+                return [
+                    {
+                        "week_number": row["week_number"],
+                        "theme": row["theme"],
+                        "activity_count": len(json.loads(row["activities"])),
+                        "updated_at": row["updated_at"]
+                    }
+                    for row in rows
+                ]
+        except Exception as e:
+            print(f"Failed to list weekly schedules: {e}")
+            return []

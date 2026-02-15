@@ -241,13 +241,42 @@ export function WeeklyScheduler({ initialWeek = 1, onSave }: WeeklySchedulerProp
     window.print();
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     onSave?.(schedule);
-    // Also save to localStorage
-    DAYS.forEach(day => {
-      const key = `week-${currentWeek}-${day}`;
-      localStorage.setItem(key, JSON.stringify(schedule[day]));
-    });
+    
+    // Save to API
+    try {
+      // Convert day-based structure to flat list with day property
+      const allActivities = DAYS.flatMap(day => 
+        schedule[day].map(act => ({ ...act, day }))
+      );
+      
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/schedules/weekly/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          week_number: currentWeek,
+          theme: schedule.theme,
+          activities: allActivities
+        })
+      });
+      
+      if (response.ok) {
+        alert(`Week ${currentWeek} saved successfully!`);
+      } else {
+        throw new Error('Save failed');
+      }
+    } catch (e) {
+      console.error('Failed to save to API, falling back to localStorage:', e);
+      // Fallback to localStorage
+      const key = `week-${currentWeek}-activities`;
+      const allActivities = DAYS.flatMap(day => 
+        schedule[day].map(act => ({ ...act, day }))
+      );
+      localStorage.setItem(key, JSON.stringify(allActivities));
+      alert(`Week ${currentWeek} saved locally (API unavailable)`);
+    }
   };
 
   // Calculate position for timeline view
