@@ -6,6 +6,7 @@ FastAPI app with streaming chat via Server-Sent Events
 import json
 import logging
 import os
+import re
 import sqlite3
 import time
 import uuid
@@ -38,7 +39,16 @@ from .observability import (
     request_id_ctx,
 )
 from .rag import initialize_vector_store
-from .safety import chat_rate_limiter, normalize_text
+from .safety import (
+    chat_rate_limiter, 
+    normalize_text, 
+    SlidingWindowRateLimiter,
+    sanitize_activity_title,
+    sanitize_activity_description,
+    sanitize_schedule_title,
+    sanitize_activity_data,
+    sanitize_text_input
+)
 
 load_dotenv()
 configure_logging()
@@ -48,6 +58,12 @@ logger = logging.getLogger("kcp.api")
 # Global instances (single architecture)
 vector_store = None
 memory_manager: Optional[MemoryManager] = None
+
+# Rate limiters for save endpoints (PR7 security)
+# More permissive than chat but still prevent abuse
+schedule_save_limiter = SlidingWindowRateLimiter(max_requests=10, window_seconds=60)  # 10 saves/min
+activity_save_limiter = SlidingWindowRateLimiter(max_requests=15, window_seconds=60)  # 15 saves/min
+delete_schedule_limiter = SlidingWindowRateLimiter(max_requests=10, window_seconds=60)  # 10 deletes/min
 
 
 @asynccontextmanager
@@ -274,7 +290,7 @@ async def chat_stream(request: ChatRequest, http_request: Request):
             value=trusted_user_id,
             httponly=True,
             samesite="lax",
-            secure=False,
+            secure=os.getenv("ENVIRONMENT") == "production",
             max_age=60 * 60 * 24 * 30,
         )
 
@@ -427,14 +443,23 @@ async def generate_schedule_endpoint(request: ScheduleGenerateRequest, http_requ
             preferences["low_prep"] = True
         if profile.default_age_group and not request.age_group:
             request.age_group = profile.default_age_group
+        # Merge typical supplies from profile
+        if profile.typical_supplies and "available_supplies" not in preferences:
+            preferences["available_supplies"] = profile.typical_supplies
     
-    # Generate schedule template
+    # Extract theme and supplies from preferences
+    theme = preferences.get("theme") or preferences.get("activity_type")
+    available_supplies = preferences.get("available_supplies") or preferences.get("supplies", [])
+    
+    # Generate schedule template with activity population
     schedule = generate_schedule_template(
         date=request.date,
         age_group=request.age_group,
         duration_hours=request.duration_hours,
         preferences=preferences,
-        weather=weather_data
+        weather=weather_data,
+        theme=theme,
+        available_supplies=available_supplies
     )
     
     log_event(
@@ -443,7 +468,8 @@ async def generate_schedule_endpoint(request: ScheduleGenerateRequest, http_requ
         "schedule_generated",
         user_id=trusted_user_id,
         date=request.date,
-        activity_count=len(schedule.get("activities", []))
+        theme=theme,
+        filled_count=schedule.get("stats", {}).get("filled_slots", 0)
     )
     
     return schedule
@@ -457,19 +483,42 @@ async def save_schedule(request: ScheduleCreateRequest, http_request: Request):
     
     trusted_user_id, _ = _get_or_create_session_user_id(http_request)
     
+    # Rate limiting check
+    allowed, retry_after = schedule_save_limiter.allow(trusted_user_id)
+    if not allowed:
+        metrics.incr("rate_limited_requests_total")
+        log_event(
+            logger,
+            logging.WARNING,
+            "schedule_save_rate_limited",
+            user_id=trusted_user_id,
+            retry_after=retry_after,
+        )
+        raise HTTPException(status_code=429, detail=f"Rate limit exceeded. Retry in {retry_after}s")
+    
     # Generate unique ID
     import uuid
     schedule_id = str(uuid.uuid4())
+    
+    # Sanitize schedule title
+    sanitized_title = sanitize_schedule_title(request.title) if request.title else None
+    
+    # Sanitize activities data
+    sanitized_activities = []
+    for activity in request.activities:
+        sanitized_activity = sanitize_activity_data(activity.model_dump())
+        from .models import ScheduleActivity
+        sanitized_activities.append(ScheduleActivity(**sanitized_activity))
     
     # Save to database via memory manager
     schedule = Schedule(
         id=schedule_id,
         user_id=trusted_user_id,
         date=request.date,
-        title=request.title,
+        title=sanitized_title,
         age_group=request.age_group,
         duration_hours=request.duration_hours,
-        activities=request.activities
+        activities=sanitized_activities
     )
     
     # Save to SQLite
@@ -592,6 +641,19 @@ async def delete_schedule(schedule_id: str, http_request: Request):
     
     trusted_user_id, _ = _get_or_create_session_user_id(http_request)
     
+    # Rate limiting check
+    allowed, retry_after = delete_schedule_limiter.allow(trusted_user_id)
+    if not allowed:
+        metrics.incr("rate_limited_requests_total")
+        log_event(
+            logger,
+            logging.WARNING,
+            "delete_schedule_rate_limited",
+            user_id=trusted_user_id,
+            retry_after=retry_after,
+        )
+        raise HTTPException(status_code=429, detail=f"Rate limit exceeded. Retry in {retry_after}s")
+    
     with sqlite3.connect(memory_manager.db_path) as conn:
         # Check if schedule exists and belongs to user
         row = conn.execute(
@@ -617,39 +679,146 @@ def generate_schedule_template(
     age_group: str,
     duration_hours: int,
     preferences: dict,
-    weather: dict = None
+    weather: dict = None,
+    theme: str = None,
+    available_supplies: list = None,
 ) -> dict:
-    """Generate a schedule template with time slots."""
+    """
+    Generate a schedule template with time slots and ACTUALLY populate with activities.
+    
+    Args:
+        date: Date string (YYYY-MM-DD)
+        age_group: Target age group (e.g., "6-8 years")
+        duration_hours: Total schedule duration
+        preferences: User preferences dict
+        weather: Weather data dict (optional)
+        theme: Activity theme (optional, e.g., "science", "art", "sports")
+        available_supplies: List of available supplies (optional)
+    
+    Returns:
+        Schedule dict with populated activities
+    """
     from datetime import datetime, timedelta
+    import random
     
     # Parse preferences
     start_time_str = preferences.get("start_time", "9:00 AM")
     include_breaks = preferences.get("include_breaks", True)
+    low_prep_only = preferences.get("low_prep", False)
     
     try:
         start = datetime.strptime(start_time_str, "%I:%M %p")
     except:
         start = datetime.strptime("9:00", "%H:%M")
     
-    # Generate time slots
-    slots = []
-    current_time = start
-    end_time = start + timedelta(hours=duration_hours)
-    
     # Determine if outdoor is suitable
     outdoor_ok = True
     if weather:
         outdoor_ok = weather.get("outdoor_suitable", True)
+    indoor_pref = preferences.get("indoor_preferred", not outdoor_ok)
     
     # Activity durations based on age group
-    if "5" in age_group or "6" in age_group:
+    age_num = 8  # default
+    try:
+        # Extract first number from age_group string
+        age_match = re.search(r'(\d+)', age_group)
+        if age_match:
+            age_num = int(age_match.group(1))
+    except:
+        pass
+    
+    if age_num <= 6:
         activity_duration = 20  # Younger kids = shorter activities
-    elif "7" in age_group or "8" in age_group:
+    elif age_num <= 8:
         activity_duration = 30
     else:
         activity_duration = 45
     
+    # Build search queries based on theme and preferences
+    base_queries = []
+    if theme:
+        base_queries.append(f"{theme} activities for kids")
+        base_queries.append(f"{theme} games children")
+    else:
+        base_queries = [
+            "fun kids activities",
+            "children games",
+            "educational activities",
+            "group activities children",
+        ]
+    
+    # Add age-specific terms
+    for i in range(len(base_queries)):
+        base_queries[i] = f"{base_queries[i]} {age_group}"
+    
+    # Search for activities using vector store
+    found_activities = []
+    if vector_store:
+        try:
+            # Search with multiple queries for variety
+            for query in base_queries[:3]:  # Limit to 3 searches
+                try:
+                    results = vector_store.search(
+                        query=query,
+                        top_k=10,
+                        filter_dict=None
+                    )
+                    for match in results:
+                        activity = {
+                            "id": match.get("id"),
+                            "title": match.get("title", "Untitled"),
+                            "description": match.get("description", ""),
+                            "type": match.get("type", "Other"),
+                            "duration_minutes": match.get("duration_minutes", activity_duration),
+                            "indoor_outdoor": match.get("indoor_outdoor", "either"),
+                            "supplies": match.get("supplies", ""),
+                            "score": match.get("score", 0),
+                        }
+                        # Avoid duplicates
+                        if not any(a.get("id") == activity["id"] for a in found_activities):
+                            found_activities.append(activity)
+                except Exception as e:
+                    logger.warning(f"Activity search failed for query '{query}': {e}")
+                    continue
+        except Exception as e:
+            logger.error(f"Vector store search failed: {e}")
+    
+    # Filter activities based on constraints
+    suitable_activities = []
+    for activity in found_activities:
+        # Check duration compatibility (within +/- 15 min of target)
+        act_duration = activity.get("duration_minutes", 30) or 30
+        if abs(act_duration - activity_duration) > 20:
+            continue
+        
+        # Check indoor/outdoor preference
+        act_io = activity.get("indoor_outdoor", "either")
+        if indoor_pref and act_io == "outdoor":
+            continue  # Skip outdoor-only if indoor preferred
+        if not outdoor_ok and act_io == "outdoor":
+            continue  # Skip outdoor-only if weather doesn't permit
+        
+        # Check supply constraints
+        if available_supplies and activity.get("supplies"):
+            act_supplies = str(activity.get("supplies", "")).lower()
+            # Skip if requires special supplies not available
+            has_supplies = any(s.lower() in act_supplies for s in available_supplies)
+            if not has_supplies and low_prep_only:
+                continue
+        
+        suitable_activities.append(activity)
+    
+    # Shuffle for variety
+    random.shuffle(suitable_activities)
+    
+    # Generate time slots and populate with activities
+    slots = []
+    activities_placed = []
+    current_time = start
+    end_time = start + timedelta(hours=duration_hours)
     activity_count = 0
+    activity_index = 0
+    
     while current_time < end_time:
         time_str = current_time.strftime("%I:%M %p")
         
@@ -671,28 +840,63 @@ def generate_schedule_template(
         else:
             location_rec = "indoor"
         
-        slots.append({
-            "time": time_str,
-            "type": "activity",
-            "duration_minutes": activity_duration,
-            "title": None,  # To be filled
-            "description": None,
-            "indoor_outdoor": location_rec,
-            "needs_activity": True
-        })
+        # Get next activity from suitable_activities (cycle if needed)
+        if suitable_activities and activity_index < len(suitable_activities):
+            activity = suitable_activities[activity_index]
+            activity_index += 1
+            
+            slot = {
+                "time": time_str,
+                "type": "activity",
+                "duration_minutes": activity.get("duration_minutes", activity_duration),
+                "title": activity.get("title", "Activity"),
+                "description": activity.get("description", "Fun activity")[:150] + "...",
+                "indoor_outdoor": activity.get("indoor_outdoor", location_rec),
+                "activity_id": activity.get("id"),
+                "activity_type": activity.get("type", "Other"),
+                "supplies_needed": activity.get("supplies", ""),
+                "needs_activity": False  # ✅ ACTIVITY POPULATED
+            }
+            activities_placed.append(activity.get("title"))
+        else:
+            # Fallback if no activities found
+            slot = {
+                "time": time_str,
+                "type": "activity",
+                "duration_minutes": activity_duration,
+                "title": f"{theme.title() if theme else 'Fun'} Activity {activity_count + 1}",
+                "description": f"A {theme if theme else 'fun'} activity suitable for {age_group}.",
+                "indoor_outdoor": location_rec,
+                "needs_activity": True  # Still needs an activity
+            }
         
-        current_time += timedelta(minutes=activity_duration)
+        slots.append(slot)
+        current_time += timedelta(minutes=slot.get("duration_minutes", activity_duration))
         activity_count += 1
+    
+    # Build response
+    filled_count = len([s for s in slots if s.get("type") == "activity" and not s.get("needs_activity", True)])
+    total_activity_slots = len([s for s in slots if s.get("type") == "activity"])
     
     return {
         "date": date,
         "age_group": age_group,
         "duration_hours": duration_hours,
+        "theme": theme,
         "weather": weather,
         "outdoor_suitable": outdoor_ok,
         "preferences": preferences,
         "template": slots,
-        "note": "Schedule template created. Use the chat to fill activities for each slot."
+        "activities_populated": activities_placed,
+        "stats": {
+            "total_slots": len(slots),
+            "activity_slots": total_activity_slots,
+            "filled_slots": filled_count,
+            "break_slots": len([s for s in slots if s.get("type") == "break"]),
+            "activities_found": len(found_activities),
+            "activities_suitable": len(suitable_activities)
+        },
+        "note": f"Schedule generated with {filled_count}/{total_activity_slots} activities populated from database." if filled_count > 0 else "Schedule template created. Limited activities found - use chat to customize."
     }
 
 
@@ -748,8 +952,29 @@ async def save_activity_endpoint(
     
     trusted_user_id, _ = _get_or_create_session_user_id(http_request)
     
+    # Rate limiting check
+    allowed, retry_after = activity_save_limiter.allow(trusted_user_id)
+    if not allowed:
+        metrics.incr("rate_limited_requests_total")
+        log_event(
+            logger,
+            logging.WARNING,
+            "activity_save_rate_limited",
+            user_id=trusted_user_id,
+            retry_after=retry_after,
+        )
+        raise HTTPException(status_code=429, detail=f"Rate limit exceeded. Retry in {retry_after}s")
+    
     # Import the save tool
     from .tools import save_activity_tool
+    
+    # Sanitize user inputs
+    sanitized_title = sanitize_activity_title(request.title)
+    sanitized_description = sanitize_activity_description(request.description)
+    sanitized_instructions = sanitize_activity_description(request.instructions)
+    sanitized_supplies = [
+        sanitize_text_input(s, max_length=100) for s in (request.supplies or [])
+    ]
     
     # Prepare context
     tool_context = {
@@ -758,14 +983,14 @@ async def save_activity_endpoint(
         "vector_store": vector_store
     }
     
-    # Call the save tool
+    # Call the save tool with sanitized data
     result = save_activity_tool(
-        title=request.title,
-        description=request.description,
-        instructions=request.instructions,
+        title=sanitized_title,
+        description=sanitized_description,
+        instructions=sanitized_instructions,
         age_group=request.age_group,
         duration_minutes=request.duration_minutes,
-        supplies=request.supplies,
+        supplies=sanitized_supplies,
         activity_type=request.activity_type,
         indoor_outdoor=request.indoor_outdoor,
         _context=tool_context
